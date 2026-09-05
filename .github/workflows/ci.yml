@@ -57,6 +57,18 @@ jobs:
       # locally would disagree with the server — the package's whole premise.
       - run: npm --workspace packages/pool-sim run test
 
+  channel-manager:
+    name: Channel manager
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm install --workspace packages/channel-manager
+      # Money tests: claiming is the only step that moves funds, and the ceiling
+      # is what bounds how much can move at once. Keep blocking.
+      - run: npm --workspace packages/channel-manager run test
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
