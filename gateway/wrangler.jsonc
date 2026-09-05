@@ -1,0 +1,16 @@
+{
+  "name": "clubhouse-agent-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  // Buffer appears in the x402 type surface; nodejs_compat supplies it.
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [{ "pattern": "agents.goclubhouse.io/*", "zone_name": "goclubhouse.io" }],
+  "vars": {
+    "X402_NETWORK": "eip155:8453",
+    "PRICE_RANKED_SEAT": "1.00",
+    "PRICE_TOURNAMENT_ENTRY": "5.00",
+    "ORIGIN_BASE_URL": "https://goclubhouse.io"
+  }
+  // Secrets (set via `wrangler secret put`): ORIGIN_HMAC_SECRET, AGENT_POT_ADDRESS
+  // Bindings to add in Phase 1: QUOTA (Durable Object), AUDIT (R2), STATE (KV)
+}
