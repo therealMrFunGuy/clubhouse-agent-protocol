@@ -2,12 +2,16 @@
   "name": "clubhouse-agent-protocol",
   "private": true,
   "version": "0.1.0",
-  "description": "Open agent-facing edge of The Clubhouse — x402 gateway, SDKs, and MCP server",
+  "description": "Open agent-facing edge of The Clubhouse \u2014 x402 gateway, SDKs, and MCP server",
   "license": "MIT",
-  "workspaces": ["gateway", "packages/*"],
+  "workspaces": [
+    "gateway",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "npm --workspace gateway run dev",
     "build": "npm --workspace gateway run build",
-    "typecheck": "tsc --noEmit -p gateway/tsconfig.json"
+    "typecheck": "tsc --noEmit -p gateway/tsconfig.json",
+    "test": "npm --workspace packages/mcp-server run test"
   }
 }

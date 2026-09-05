@@ -32,6 +32,18 @@ jobs:
       # packages that can regress on Node-builtin usage between releases.
       - run: npm --workspace gateway run build
 
+  mcp:
+    name: MCP server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm install --workspace packages/mcp-server
+      # Includes the opponent-supplied prompt-injection defences. A regression
+      # here is a security regression, not a style one — keep it blocking.
+      - run: npm --workspace packages/mcp-server run test
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
