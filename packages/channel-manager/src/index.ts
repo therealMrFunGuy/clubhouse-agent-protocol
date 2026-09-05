@@ -39,6 +39,7 @@ import { selectWithinCeiling, type BreakerState } from './breaker.js';
 
 export { localAuthorizerSigner, remoteAuthorizerSigner, type AuthorizerSigner } from './signer.js';
 export { selectWithinCeiling, owedBy, type ClaimCandidate, type BreakerState } from './breaker.js';
+export { createFacilitatorService, type FacilitatorServiceOptions } from './facilitator.js';
 
 /** CAIP-2 networks where the batch-settlement contracts are deployed. */
 export const NETWORK = {
