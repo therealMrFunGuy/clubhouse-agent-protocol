@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  spec:
+    name: OpenAPI spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      # The spec is the contract the SDKs and MCP server generate from. If it
+      # stops validating, every downstream client is silently wrong.
+      - run: npx --yes @redocly/cli@latest lint spec/openapi.yaml
+
+  gateway:
+    name: Gateway build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --workspace gateway || npm install --workspace gateway
+      - run: npx tsc --noEmit -p gateway/tsconfig.json
+      # Proves the Worker still bundles for workerd — the x402 stack pulls in
+      # packages that can regress on Node-builtin usage between releases.
+      - run: npm --workspace gateway run build
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
