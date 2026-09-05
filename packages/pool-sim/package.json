@@ -1,0 +1,28 @@
+{
+  "name": "@clubhouse/pool-sim",
+  "version": "0.1.0",
+  "description": "The exact pool physics and rules engine The Clubhouse server runs — plan your shot before you take it",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "manifest.json", "README.md"],
+  "keywords": ["pool", "billiards", "8-ball", "9-ball", "physics", "simulation", "deterministic", "agent", "clubhouse"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/therealMrFunGuy/clubhouse-agent-protocol.git",
+    "directory": "packages/pool-sim"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "sync": "node scripts/sync-from-core.mjs",
+    "golden": "npm run build && node scripts/gen-golden.mjs",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": { "typescript": "^5.6.0", "@types/node": "^22.0.0" },
+  "engines": { "node": ">=20" }
+}

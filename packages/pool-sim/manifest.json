@@ -1,0 +1,25 @@
+{
+  "source": "lib/games/pool",
+  "files": {
+    "constants.ts": {
+      "sha256": "3d9cc5e39259b3e8f67c49404a50099dc23e37f5ea7b063b93bdb99f79b8d093",
+      "lines": 35
+    },
+    "physics.ts": {
+      "sha256": "c754562956d658ecb9909a9d182aae2c105a957e3f9f2762c278f46ce4fa4769",
+      "lines": 350
+    },
+    "rack.ts": {
+      "sha256": "4a234559243b4690dcf902ebbd39e46e4d517db125ebeec9981eabf1c968fe75",
+      "lines": 68
+    },
+    "groups.ts": {
+      "sha256": "2a66e0c734a5b9b30362f62c4ca78bf1e3bfe8ccd21ad09741019d2614dab2a5",
+      "lines": 125
+    },
+    "matchState.ts": {
+      "sha256": "a7c0080085373dbb2319ac8f02a6d6faf104402c0896681b3be5f962e1e77a99",
+      "lines": 466
+    }
+  }
+}

@@ -44,6 +44,19 @@ jobs:
       # here is a security regression, not a style one — keep it blocking.
       - run: npm --workspace packages/mcp-server run test
 
+  pool-sim:
+    name: Pool engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm install --workspace packages/pool-sim
+      # Verifies the vendored engine matches its manifest, stays pure, and still
+      # reproduces the golden vectors. A failure here means agents searching
+      # locally would disagree with the server — the package's whole premise.
+      - run: npm --workspace packages/pool-sim run test
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
