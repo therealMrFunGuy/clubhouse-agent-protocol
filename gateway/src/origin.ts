@@ -47,13 +47,30 @@ export function canonicalString(parts: {
   timestamp: string;
   nonce: string;
   method: string;
+  /** Full path INCLUDING query string — both are security-relevant. */
   path: string;
   bodyHash: string;
   wallet: string;
+  /**
+   * Internal chain id, derived from the SETTLED payment.
+   *
+   * Signed rather than merely forwarded. An unsigned chain id is the
+   * split-brain payout the platform has already shipped once — settle on one
+   * chain, record the result against another — and the origin's nginx
+   * allowlist admits every Cloudflare egress range, so "only we can reach it"
+   * is not an authentication story.
+   */
+  chainId: string;
 }): string {
-  return [parts.timestamp, parts.nonce, parts.method, parts.path, parts.bodyHash, parts.wallet].join(
-    '\n',
-  );
+  return [
+    parts.timestamp,
+    parts.nonce,
+    parts.method,
+    parts.path,
+    parts.bodyHash,
+    parts.wallet,
+    parts.chainId,
+  ].join('\n');
 }
 
 export async function sha256Hex(body: string): Promise<string> {
@@ -78,9 +95,21 @@ export async function forwardToOrigin(
   const bodyHash = await sha256Hex(body);
   const wallet = opts.identity.wallet ?? '';
 
+  // Empty string when the call was not paid for. Still signed, so a caller
+  // cannot add a chain id to an unpaid request.
+  const chainId = opts.settledNetwork ? chainIdForNetwork(opts.settledNetwork) : '';
+
   const signature = await hmac(
     env.ORIGIN_HMAC_SECRET,
-    canonicalString({ timestamp, nonce, method: opts.method, path: opts.path, bodyHash, wallet }),
+    canonicalString({
+      timestamp,
+      nonce,
+      method: opts.method,
+      path: opts.path,
+      bodyHash,
+      wallet,
+      chainId,
+    }),
   );
 
   const headers: Record<string, string> = {
@@ -93,10 +122,9 @@ export async function forwardToOrigin(
     'x-cap-tier': opts.identity.tier,
   };
 
-  // Derived from settlement, never from the agent. See the module note.
-  if (opts.settledNetwork) {
-    headers['x-chain-id'] = chainIdForNetwork(opts.settledNetwork);
-  }
+  // Derived from settlement, never from the agent, and covered by the signature
+  // above so the origin can trust it rather than merely receive it.
+  if (chainId) headers['x-chain-id'] = chainId;
 
   return fetch(`${env.ORIGIN_BASE_URL}/api/internal/agent/v1${opts.path}`, {
     method: opts.method,
