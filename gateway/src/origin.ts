@@ -61,6 +61,16 @@ export function canonicalString(parts: {
    * is not an authentication story.
    */
   chainId: string;
+  /**
+   * sha256 of the payment receipt header, or '' when the call was not paid for.
+   *
+   * The receipt rides in `x-cap-payment` rather than the body so that paid GETs
+   * work too. Hashing it into the signed string is what makes that header
+   * trustworthy — otherwise a caller could mint a receipt for a payment that
+   * never happened, and since the entry fee is the only money event at launch,
+   * that one header is the entire paywall.
+   */
+  paymentHash: string;
 }): string {
   return [
     parts.timestamp,
@@ -70,7 +80,22 @@ export function canonicalString(parts: {
     parts.bodyHash,
     parts.wallet,
     parts.chainId,
+    parts.paymentHash,
   ].join('\n');
+}
+
+/**
+ * What the gateway asserts about the payment that bought a request.
+ * Derived from a VERIFIED payment; never from anything the agent sent.
+ */
+export interface PaymentReceipt {
+  nonce: string;
+  scheme: string;
+  network: string;
+  asset: string;
+  /** Exact base units as a decimal string — never a float. */
+  amount: string;
+  resource: string;
 }
 
 export async function sha256Hex(body: string): Promise<string> {
@@ -84,20 +109,42 @@ export async function forwardToOrigin(
     method: string;
     path: string;
     body?: unknown;
+    /** Exact request bytes to forward, when the caller already has them. */
+    rawBody?: string;
     identity: AgentIdentity;
     /** CAIP-2 network of the SETTLED payment, when this call was paid for. */
     settledNetwork?: string;
+    /** The verified payment, when this call was paid for. */
+    payment?: PaymentReceipt;
+    /**
+     * Replay key for the origin's nonce store.
+     *
+     * Supplied for wallet-signature calls so the AGENT's own nonce becomes the
+     * replay guard — a captured signed request is then rejected downstream
+     * instead of being re-forwarded under a fresh gateway nonce. Omitted for
+     * everything else, where a random value is correct.
+     */
+    nonce?: string;
   },
 ): Promise<Response> {
-  const body = opts.body === undefined ? '' : JSON.stringify(opts.body);
+  // Prefer the caller's exact bytes. When an agent signed a body hash,
+  // re-serialising here would mean the bytes it signed and the bytes the origin
+  // executes are not the same string — each hash internally consistent, neither
+  // covering the other.
+  const body = opts.rawBody ?? (opts.body === undefined ? '' : JSON.stringify(opts.body));
   const timestamp = String(Date.now());
-  const nonce = crypto.randomUUID();
+  const nonce = opts.nonce ?? crypto.randomUUID();
   const bodyHash = await sha256Hex(body);
   const wallet = opts.identity.wallet ?? '';
 
   // Empty string when the call was not paid for. Still signed, so a caller
   // cannot add a chain id to an unpaid request.
   const chainId = opts.settledNetwork ? chainIdForNetwork(opts.settledNetwork) : '';
+
+  // Serialise ONCE and sign that exact string. Hashing a re-serialisation would
+  // reintroduce key-order sensitivity between the two sides.
+  const paymentJson = opts.payment ? JSON.stringify(opts.payment) : '';
+  const paymentHash = paymentJson ? await sha256Hex(paymentJson) : '';
 
   const signature = await hmac(
     env.ORIGIN_HMAC_SECRET,
@@ -109,6 +156,7 @@ export async function forwardToOrigin(
       bodyHash,
       wallet,
       chainId,
+      paymentHash,
     }),
   );
 
@@ -125,6 +173,9 @@ export async function forwardToOrigin(
   // Derived from settlement, never from the agent, and covered by the signature
   // above so the origin can trust it rather than merely receive it.
   if (chainId) headers['x-chain-id'] = chainId;
+  // Same rule: forwarded verbatim, and only trustworthy because its hash is in
+  // the signed string. The origin re-hashes what it receives.
+  if (paymentJson) headers['x-cap-payment'] = paymentJson;
 
   return fetch(`${env.ORIGIN_BASE_URL}/api/internal/agent/v1${opts.path}`, {
     method: opts.method,

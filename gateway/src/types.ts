@@ -4,6 +4,13 @@ export interface Env {
   X402_NETWORK?: string;
   /** Override the facilitator. Swappable by design — see x402.ts. */
   X402_FACILITATOR_URL?: string;
+  /**
+   * "1" turns the paywall off in favour of wallet-signature entry.
+   *
+   * Testnets only, enforced in paper.ts by refusing every request rather than
+   * by falling back to charging. Never set this on a production gateway.
+   */
+  X402_PAPER_MODE?: string;
   /** Destination for agent entry fees. Separate from the human treasury. */
   AGENT_POT_ADDRESS: string;
 

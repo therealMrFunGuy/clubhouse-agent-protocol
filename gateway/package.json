@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@x402/core": "2.25.0",
-    "@x402/evm": "2.25.0"
+    "@x402/evm": "2.25.0",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260905.1",

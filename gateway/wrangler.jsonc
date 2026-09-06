@@ -10,6 +10,24 @@
     "PRICE_RANKED_SEAT": "1.00",
     "PRICE_TOURNAMENT_ENTRY": "5.00",
     "ORIGIN_BASE_URL": "https://goclubhouse.io"
+  },
+
+  // The paper environment: a local origin, a testnet, and no real money.
+  //
+  // X402_PAPER_MODE turns the paywall off in favour of wallet-signature entry.
+  // paper.ts refuses to serve ANY request if that flag is set on a non-testnet
+  // network, so this block cannot be promoted to production by editing the
+  // origin URL and forgetting the rest — it fails loudly instead.
+  "env": {
+    "paper": {
+      "vars": {
+        "X402_NETWORK": "eip155:84532",
+        "X402_PAPER_MODE": "1",
+        "PRICE_RANKED_SEAT": "1.00",
+        "PRICE_TOURNAMENT_ENTRY": "5.00",
+        "ORIGIN_BASE_URL": "http://127.0.0.1:3011"
+      }
+    }
   }
   // Secrets (set via `wrangler secret put`): ORIGIN_HMAC_SECRET, AGENT_POT_ADDRESS
   // Bindings to add in Phase 1: QUOTA (Durable Object), AUDIT (R2), STATE (KV)

@@ -12,9 +12,28 @@
 
 import { getPaymentServer, adapterFor, paymentHeaderFrom, NETWORK } from './x402';
 import { forwardToOrigin, chainIdForNetwork } from './origin';
+import { verifyAgentSignature } from './agentAuth';
+import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
 import type { Env, AgentIdentity } from './types';
 
 const ANON: AgentIdentity = { wallet: null, keyId: null, tier: 'anon' };
+
+/**
+ * Authenticated but free: playing a game you already paid to enter.
+ *
+ * Identity comes from a wallet signature rather than a payment — see
+ * agentAuth.ts. Metering the moves would tax the one action an agent in a
+ * running game cannot decline to take.
+ */
+const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
+  { method: 'GET', pattern: /^\/v1\/chess\/\d+$/ },
+  { method: 'POST', pattern: /^\/v1\/chess\/\d+\/move$/ },
+  { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
+];
+
+function isSignedRoute(method: string, path: string): boolean {
+  return SIGNED_ROUTES.some((r) => r.method === method && r.pattern.test(path));
+}
 
 /** Read endpoints are free and unauthenticated — discovery should not be taxed. */
 const PUBLIC_READS = [
@@ -41,6 +60,15 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Before anything else. A gateway asked to run paper mode against a network
+    // where value is real is not partially usable — it is misconfigured, and it
+    // says so on every route rather than quietly charging.
+    const paperBlocked = paperModeBlocker(env);
+    if (paperBlocked) {
+      return json({ error: 'Gateway misconfigured', detail: paperBlocked }, 500);
+    }
+    const paper = paperModeRequested(env);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -90,9 +118,19 @@ export default {
 
     // ── Free reads ──────────────────────────────────────────────────────────
     if (request.method === 'GET' && PUBLIC_READS.some((p) => path.startsWith(p))) {
+      // Name the chain this gateway serves, unless the caller named one.
+      // Ratings and matches are per-chain, so an unqualified read falls back to
+      // the platform default — showing an agent a ladder it is not playing on.
+      // This is NOT the settlement chain id: that one stays reserved for what a
+      // payment actually settled on, and is signed rather than passed here.
+      const forwarded = new URL(url.toString());
+      if (!forwarded.searchParams.has('chain')) {
+        forwarded.searchParams.set('chain', chainIdForNetwork(env.X402_NETWORK ?? NETWORK.baseMainnet));
+      }
+
       const upstream = await forwardToOrigin(env, {
         method: 'GET',
-        path: path.replace(/^\/v1/, '') + url.search,
+        path: path.replace(/^\/v1/, '') + forwarded.search,
         identity: ANON,
       });
       return new Response(upstream.body, {
@@ -105,8 +143,80 @@ export default {
       });
     }
 
+    // ── Signed, free: in-game actions ───────────────────────────────────────
+    if (isSignedRoute(request.method, path)) {
+      const rawBody = request.method === 'GET' ? '' : await request.text();
+      const auth = await verifyAgentSignature(request, path, rawBody);
+      if (!auth.ok) {
+        // Vague to the caller, specific in the log: distinguishing "stale" from
+        // "bad signature" helps an attacker tune, and helps nobody else.
+        console.warn(`[gateway] agent signature rejected on ${path}: ${auth.failure}`);
+        return json({ error: 'Unauthorized', hint: 'Sign the challenge; see /llms.txt' }, 401);
+      }
+
+      const upstream = await forwardToOrigin(env, {
+        method: request.method,
+        path: path.replace(/^\/v1/, '') + url.search,
+        rawBody: rawBody || undefined,
+        identity: { wallet: auth.address!, keyId: null, tier: 'ranked' },
+        // In-game routes act on a match that was already paid for, so no
+        // receipt rides along — but the chain still must be named, or the
+        // origin cannot tell which database holds the match.
+        settledNetwork: env.X402_NETWORK ?? NETWORK.baseMainnet,
+        nonce: auth.envelopeNonce,
+      });
+
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'access-control-allow-origin': '*',
+        },
+      });
+    }
+
     // ── Paid routes ─────────────────────────────────────────────────────────
     if (request.method === 'POST' && path.startsWith('/v1/')) {
+      // Paper environment: a wallet signature buys the seat instead of USDC.
+      // Loudly stamped, testnet-only, and refused outright above if that is not
+      // true — so this branch cannot be reached where value is real.
+      if (paper) {
+        const rawBody = await request.text();
+        const auth = await verifyAgentSignature(request, path, rawBody);
+        if (!auth.ok) {
+          console.warn(`[gateway] paper entry rejected on ${path}: ${auth.failure}`);
+          return json({ error: 'Unauthorized', paper: true }, 401);
+        }
+
+        const network = env.X402_NETWORK ?? NETWORK.baseSepolia;
+        const upstream = await forwardToOrigin(env, {
+          method: 'POST',
+          path: path.replace(/^\/v1/, '') + url.search,
+          rawBody: rawBody || undefined,
+          identity: { wallet: auth.address!, keyId: null, tier: 'ranked' },
+          settledNetwork: network,
+          payment: paperReceipt(env, {
+            nonce: auth.envelopeNonce!,
+            resource: path,
+          }),
+          nonce: auth.envelopeNonce,
+        });
+
+        const text = await upstream.text();
+        let body: unknown;
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = { raw: text };
+        }
+        // Stamped in the body as well as the header: a screenshot of a paper
+        // win should never be mistakable for a real one.
+        return json({ ...(body as object), paper: true }, upstream.status, {
+          'x-cap-paper-mode': '1',
+          'x-cap-chain': chainIdForNetwork(network),
+        });
+      }
+
       let server;
       try {
         server = await getPaymentServer(env);
@@ -128,7 +238,15 @@ export default {
       const result = (await server.processHTTPRequest(ctx as never)) as {
         type: string;
         response?: { status: number; headers: Record<string, string>; body: unknown };
-        payment?: { payer?: string; network?: string };
+        payment?: {
+          payer?: string;
+          network?: string;
+          nonce?: string;
+          asset?: string;
+          amount?: string;
+          scheme?: string;
+          transaction?: string;
+        };
       };
 
       // Unpaid (or invalid) — hand back the 402 challenge verbatim.
@@ -150,16 +268,38 @@ export default {
         return json({ error: 'Payment verified but no payer resolved' }, 500);
       }
 
-      // TODO(phase-3): replay-nonce check, quota, and payout circuit breaker
-      // MUST land here before any money route is enabled in production.
+      // The replay guard for the payment itself is the origin's UNIQUE index on
+      // agent_x402_payments.nonce — a database constraint rather than a check
+      // here, because two concurrent requests both pass a check and only one
+      // survives a constraint. This nonce is what it keys on, so a settlement
+      // that arrives without one cannot be allowed through: no nonce means no
+      // way to say "this payment bought exactly one seat".
+      const settlementNonce = result.payment?.nonce ?? result.payment?.transaction;
+      if (!settlementNonce) {
+        console.error('[gateway] settled payment carried no nonce or tx — refusing');
+        return json({ error: 'Payment could not be recorded' }, 502);
+      }
+
+      // TODO(phase-3): quota and the payout circuit breaker MUST land here
+      // before any money route is enabled in production.
       const identity: AgentIdentity = { wallet: payer, keyId: null, tier: 'ranked' };
 
       const upstream = await forwardToOrigin(env, {
         method: 'POST',
-        path: path.replace(/^\/v1/, ''),
-        body: await request.json().catch(() => ({})),
+        path: path.replace(/^\/v1/, '') + url.search,
+        rawBody: await request.text(),
         identity,
         settledNetwork: network,
+        payment: {
+          nonce: settlementNonce,
+          scheme: result.payment?.scheme ?? 'exact',
+          network,
+          asset: result.payment?.asset ?? '',
+          // Exact base units. Defaulting to '0' rather than guessing keeps a
+          // missing amount visible in the ledger instead of inventing a figure.
+          amount: result.payment?.amount ?? '0',
+          resource: path,
+        },
       });
 
       return new Response(upstream.body, {

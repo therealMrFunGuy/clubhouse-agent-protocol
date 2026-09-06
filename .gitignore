@@ -1,6 +1,9 @@
 node_modules/
 dist/
 .wrangler/
-.dev.vars
+# Wrangler local secrets. The glob matters: `--env <name>` reads
+# `.dev.vars.<name>`, which a bare `.dev.vars` pattern does not cover — and
+# these files hold the origin HMAC secret.
+.dev.vars*
 *.log
 package-lock.json
