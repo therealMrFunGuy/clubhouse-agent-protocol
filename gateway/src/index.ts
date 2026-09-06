@@ -46,9 +46,16 @@ function isSignedRoute(method: string, path: string): boolean {
  * under /v1/, which is a paper environment that does not model the paywall it
  * exists to rehearse.
  */
+// Kept deliberately in step with buildRoutes() in x402.ts. An audit caught the
+// first version of this list claiming parity it did not have: it matched
+// /v1/matchmaking/<anything> while x402 priced only /v1/matchmaking/queue, and
+// it required a numeric tournament id while the spec types that id as a string.
+// The result was routes that were free in production and paid in paper, and
+// vice versa — a paper environment that rehearses the wrong paywall is worse
+// than none, because it produces confident green runs.
 const PAID_ROUTES: RegExp[] = [
-  /^\/v1\/matchmaking\/[a-z0-9]+$/,
-  /^\/v1\/tournaments\/\d+\/join$/,
+  /^\/v1\/matchmaking\/queue$/,
+  /^\/v1\/tournaments\/[^/]+\/join$/,
 ];
 
 function isPaidRoute(path: string): boolean {
@@ -207,10 +214,10 @@ export default {
       // Loudly stamped, testnet-only, and refused outright above if that is not
       // true — so this branch cannot be reached where value is real.
       if (paper) {
-        // Gate on the SAME priced-route set the real path enforces. Without
-        // this the paper branch minted a synthetic receipt for any POST under
-        // /v1/, so the environment did not model the paywall it exists to
-        // rehearse — the one thing a paper environment must get right.
+        // Gate on the priced-route set, which PAID_ROUTES keeps in step with
+        // x402's buildRoutes. Without this the paper branch minted a synthetic
+        // receipt for any POST under /v1/, so the environment did not model the
+        // paywall it exists to rehearse — the one thing it must get right.
         if (!isPaidRoute(path)) {
           return json({ error: 'Unknown endpoint', paper: true }, 404);
         }

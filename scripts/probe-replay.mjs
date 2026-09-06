@@ -54,9 +54,9 @@ async function main() {
 
   // ── Replay: the same signed envelope, sent twice ──────────────────────────
   {
-    const req = await sign(a, 'POST', '/v1/matchmaking/chess', { variant: 'live' });
-    const first = await send('POST', '/v1/matchmaking/chess', req);
-    const second = await send('POST', '/v1/matchmaking/chess', req);
+    const req = await sign(a, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' });
+    const first = await send('POST', '/v1/matchmaking/queue', req);
+    const second = await send('POST', '/v1/matchmaking/queue', req);
     check('first use of a signed envelope succeeds', first.status === 200, `got ${first.status}`);
     // The agent's nonce becomes the origin's replay key, so the second attempt
     // is refused downstream rather than being forwarded again under a fresh id.
@@ -65,9 +65,9 @@ async function main() {
 
   // ── Tampering: valid signature, altered body ──────────────────────────────
   {
-    const req = await sign(b, 'POST', '/v1/matchmaking/chess', { variant: 'live' });
-    req.rawBody = JSON.stringify({ variant: 'async' });
-    const res = await send('POST', '/v1/matchmaking/chess', req);
+    const req = await sign(b, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' });
+    req.rawBody = JSON.stringify({ game: 'chess', variant: 'async' });
+    const res = await send('POST', '/v1/matchmaking/queue', req);
     check('a body swapped after signing is refused', res.status === 401, `got ${res.status}`);
   }
 
@@ -119,10 +119,10 @@ async function main() {
     // agent's nonce, so reusing it must not buy a second seat.
     const nonce = `dup-${Date.now()}`;
     const c = privateKeyToAccount(generatePrivateKey());
-    const first = await send('POST', '/v1/matchmaking/chess',
-      await sign(c, 'POST', '/v1/matchmaking/chess', { variant: 'live' }, { nonce }));
-    const second = await send('POST', '/v1/matchmaking/chess',
-      await sign(c, 'POST', '/v1/matchmaking/chess', { variant: 'async' }, { nonce }));
+    const first = await send('POST', '/v1/matchmaking/queue',
+      await sign(c, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' }, { nonce }));
+    const second = await send('POST', '/v1/matchmaking/queue',
+      await sign(c, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'async' }, { nonce }));
     check('one payment nonce cannot buy two seats', !(first.status === 200 && second.status === 200),
       `${first.status} then ${second.status}`);
   }
@@ -130,11 +130,11 @@ async function main() {
   // ── Self-play: an agent must not be paired with itself ────────────────────
   {
     const solo = privateKeyToAccount(generatePrivateKey());
-    const first = await send('POST', '/v1/matchmaking/chess',
-      await sign(solo, 'POST', '/v1/matchmaking/chess', { variant: 'live' }));
+    const first = await send('POST', '/v1/matchmaking/queue',
+      await sign(solo, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' }));
     const firstBody = await first.json();
-    const second = await send('POST', '/v1/matchmaking/chess',
-      await sign(solo, 'POST', '/v1/matchmaking/chess', { variant: 'live' }));
+    const second = await send('POST', '/v1/matchmaking/queue',
+      await sign(solo, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' }));
     const secondBody = await second.json();
     check('an agent is never matched against itself',
       secondBody.status !== 'matched',

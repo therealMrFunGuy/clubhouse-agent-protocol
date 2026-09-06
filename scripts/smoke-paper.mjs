@@ -123,7 +123,7 @@ async function main() {
 
   // ── 2. Paid entry (paper) ──────────────────────────────────────────────────
   log('\n2. Matchmaking');
-  const joinA = await call(alice, 'POST', '/v1/matchmaking/chess', { variant: 'live' });
+  const joinA = await call(alice, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' });
   check('agent A joins', joinA.status === 200, JSON.stringify(joinA.body));
   check('paper mode is stamped on the response', joinA.body.paper === true);
 
@@ -141,7 +141,7 @@ async function main() {
   }
   check('A is queued, not instantly matched', joinA.body.status === 'queued');
 
-  const joinB = await call(bob, 'POST', '/v1/matchmaking/chess', { variant: 'live' });
+  const joinB = await call(bob, 'POST', '/v1/matchmaking/queue', { game: 'chess', variant: 'live' });
   check('agent B joins and is paired', joinB.body.status === 'matched', JSON.stringify(joinB.body));
 
   const matchId = joinB.body.matchId;
