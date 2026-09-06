@@ -28,7 +28,11 @@ const ANON: AgentIdentity = { wallet: null, keyId: null, tier: 'anon' };
 const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/v1\/chess\/\d+$/ },
   { method: 'POST', pattern: /^\/v1\/chess\/\d+\/move$/ },
+  // Your own audit chain. Signed because it is yours — the origin checks that
+  // the signer matches the wallet in the path.
   { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
+  // Your own matches. Signed for the same reason: "mine" needs a proven who.
+  { method: 'GET', pattern: /^\/v1\/matches\/mine$/ },
   // Leaving a queue you paid to enter must never itself cost money.
   { method: 'POST', pattern: /^\/v1\/matchmaking\/[a-z0-9]+\/cancel$/ },
 ];
@@ -144,7 +148,18 @@ export default {
     }
 
     // ── Free reads ──────────────────────────────────────────────────────────
-    if (request.method === 'GET' && PUBLIC_READS.some((p) => path.startsWith(p))) {
+    //
+    // Checked AFTER the signed routes below, via this guard. PUBLIC_READS
+    // matches on prefix, so `/v1/matches` swallowed `/v1/matches/mine` and
+    // served it anonymously — the origin then had no wallet and refused a
+    // request that was perfectly well signed. A route that requires an identity
+    // must never be reachable without one, so the specific case wins over the
+    // prefix.
+    if (
+      request.method === 'GET' &&
+      !isSignedRoute(request.method, path) &&
+      PUBLIC_READS.some((p) => path.startsWith(p))
+    ) {
       // Name the chain this gateway serves, unless the caller named one.
       // Ratings and matches are per-chain, so an unqualified read falls back to
       // the platform default — showing an agent a ladder it is not playing on.
