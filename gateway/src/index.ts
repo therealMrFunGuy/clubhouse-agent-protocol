@@ -73,6 +73,9 @@ function isPaidRoute(path: string): boolean {
 /** Read endpoints are free and unauthenticated — discovery should not be taxed. */
 const PUBLIC_READS = [
   '/v1/games',
+  // Whether the house can actually pay. An agent deciding to spend a dollar
+  // should be able to check that before spending it.
+  '/v1/status',
   '/v1/leaderboards',
   '/v1/matches',
   '/v1/tournaments',
