@@ -33,6 +33,10 @@ const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
   // Your own matches. Signed for the same reason: "mine" needs a proven who.
   { method: 'GET', pattern: /^\/v1\/matches\/mine$/ },
+  // Winnings. Reading them and claiming them are both free — charging an agent
+  // to collect money it already won would be an unusually cynical fee.
+  { method: 'GET', pattern: /^\/v1\/claims$/ },
+  { method: 'POST', pattern: /^\/v1\/claims\/\d+\/claim$/ },
   // Leaving a queue you paid to enter must never itself cost money.
   { method: 'POST', pattern: /^\/v1\/matchmaking\/[a-z0-9]+\/cancel$/ },
 ];

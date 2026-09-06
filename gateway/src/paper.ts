@@ -61,9 +61,32 @@ export function paperReceipt(env: Env, args: { nonce: string; resource: string }
     scheme: 'exact',
     network,
     asset: USDC[network] ?? '0x0000000000000000000000000000000000000000',
-    // Base units, as a string. The real path carries exact base units too —
-    // a decimal here would train the origin to accept one.
-    amount: '0',
+    // The CONFIGURED price, in exact base units — not zero.
+    //
+    // A zero-amount receipt made the paper environment stop short of the thing
+    // it exists to rehearse: with no money in, there is no pot, so settlement
+    // credited nothing and the entire payout path went unexercised while every
+    // test stayed green. A paper environment that skips the money is a paper
+    // environment that cannot catch money bugs.
+    //
+    // Nothing is actually transferred — this is a synthetic receipt on a
+    // testnet — but the ledger now moves the same numbers it would in
+    // production, so accrual, the pot split and the rake are all real.
+    amount: priceBaseUnits(env.PRICE_RANKED_SEAT),
     resource: args.resource,
   };
+}
+
+/**
+ * Decimal USDC string → base units, as a string. Six decimals, no floats.
+ *
+ * `Math.round(Number(price) * 1e6)` is the obvious version and it is how a
+ * decimals bug gets shipped; this platform has already shipped one on a money
+ * path. String arithmetic cannot drift.
+ */
+function priceBaseUnits(price: string | undefined): string {
+  const [whole = '0', frac = ''] = String(price ?? '1.00').split('.');
+  const padded = (frac + '000000').slice(0, 6);
+  const digits = `${whole}${padded}`.replace(/^0+(?=\d)/, '');
+  return /^\d+$/.test(digits) ? digits : '1000000';
 }
