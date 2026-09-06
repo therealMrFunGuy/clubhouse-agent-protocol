@@ -29,10 +29,30 @@ const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/v1\/chess\/\d+$/ },
   { method: 'POST', pattern: /^\/v1\/chess\/\d+\/move$/ },
   { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
+  // Leaving a queue you paid to enter must never itself cost money.
+  { method: 'POST', pattern: /^\/v1\/matchmaking\/[a-z0-9]+\/cancel$/ },
 ];
 
 function isSignedRoute(method: string, path: string): boolean {
   return SIGNED_ROUTES.some((r) => r.method === method && r.pattern.test(path));
+}
+
+/**
+ * Routes that cost money. The real path also asks the x402 server whether a
+ * route is priced, but that answer needs a live facilitator — so the set is
+ * named here as well, and paper mode gates on it.
+ *
+ * Without this, the paper branch would mint a synthetic receipt for ANY POST
+ * under /v1/, which is a paper environment that does not model the paywall it
+ * exists to rehearse.
+ */
+const PAID_ROUTES: RegExp[] = [
+  /^\/v1\/matchmaking\/[a-z0-9]+$/,
+  /^\/v1\/tournaments\/\d+\/join$/,
+];
+
+function isPaidRoute(path: string): boolean {
+  return PAID_ROUTES.some((p) => p.test(path));
 }
 
 /** Read endpoints are free and unauthenticated — discovery should not be taxed. */
@@ -146,7 +166,13 @@ export default {
     // ── Signed, free: in-game actions ───────────────────────────────────────
     if (isSignedRoute(request.method, path)) {
       const rawBody = request.method === 'GET' ? '' : await request.text();
-      const auth = await verifyAgentSignature(request, path, rawBody);
+      // Sign what we forward. The agent's signature previously covered the
+      // pathname only, while the gateway forwarded pathname+query and vouched
+      // for the whole thing with its own HMAC — so the origin treated a query
+      // string as agent-authorised that the agent had never seen. No signed
+      // handler reads the query today, which made it latent rather than live;
+      // it would have gone live silently the first time one added a parameter.
+      const auth = await verifyAgentSignature(request, path + url.search, rawBody);
       if (!auth.ok) {
         // Vague to the caller, specific in the log: distinguishing "stale" from
         // "bad signature" helps an attacker tune, and helps nobody else.
@@ -181,8 +207,15 @@ export default {
       // Loudly stamped, testnet-only, and refused outright above if that is not
       // true — so this branch cannot be reached where value is real.
       if (paper) {
+        // Gate on the SAME priced-route set the real path enforces. Without
+        // this the paper branch minted a synthetic receipt for any POST under
+        // /v1/, so the environment did not model the paywall it exists to
+        // rehearse — the one thing a paper environment must get right.
+        if (!isPaidRoute(path)) {
+          return json({ error: 'Unknown endpoint', paper: true }, 404);
+        }
         const rawBody = await request.text();
-        const auth = await verifyAgentSignature(request, path, rawBody);
+        const auth = await verifyAgentSignature(request, path + url.search, rawBody);
         if (!auth.ok) {
           console.warn(`[gateway] paper entry rejected on ${path}: ${auth.failure}`);
           return json({ error: 'Unauthorized', paper: true }, 401);

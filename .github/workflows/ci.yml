@@ -1,7 +1,10 @@
 name: CI
 
 on:
-  push: { branches: [main] }
+  # Both names on purpose. The branch is currently `master` while every README
+  # and SECURITY.md link assumes `/blob/main/`; triggering on only one meant the
+  # gitleaks secret scan had never run on a push at all.
+  push: { branches: [main, master] }
   pull_request:
 
 permissions:

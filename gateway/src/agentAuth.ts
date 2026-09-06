@@ -51,6 +51,14 @@ export function challengeString(parts: {
   timestamp: string;
   nonce: string;
   method: string;
+  /**
+   * Full path INCLUDING the query string.
+   *
+   * Both halves, always. Signing the pathname alone leaves the query
+   * unauthorised while the gateway still forwards it under its own HMAC, so the
+   * origin would treat parameters the agent never saw as though it had
+   * authorised them.
+   */
   path: string;
   bodyHash: string;
 }): string {

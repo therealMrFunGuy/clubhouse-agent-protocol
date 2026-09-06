@@ -91,6 +91,21 @@ export interface ShotResult {
 }
 
 // ── Ball classification ──────────────────────────────────────────────────────
+/**
+ * Exact Euclidean distance.
+ *
+ * NOT `Math.hypot`: the spec allows an implementation-approximated result, and
+ * V8 and JSC genuinely differ in the last bits. That matters here because this
+ * module is vendored into @clubhouse/pool-sim so agents can judge shot legality
+ * locally — and an audit found boundary cue placements where Node and Bun
+ * reached OPPOSITE accept/reject verdicts. An agent that trusts its own engine
+ * and gets rejected has burned the shot clock on a move it was told was legal.
+ * physics.ts already used this form; matchState was simply never brought over.
+ */
+function exactHypot(x: number, y: number): number {
+  return Math.sqrt(x * x + y * y);
+}
+
 export function groupOf(id: number): Group | 'eight' | 'cue' {
   if (id === 0) return 'cue';
   if (id === 8) return 'eight';
@@ -161,11 +176,11 @@ function cuePlacementError(state: PoolState, x: number, y: number): string | nul
     return 'Place the cue ball behind the head string';
   }
   for (const p of POCKETS) {
-    if (Math.hypot(x - p.x, y - p.y) < BALL_R * 2) return 'Too close to a pocket';
+    if (exactHypot(x - p.x, y - p.y) < BALL_R * 2) return 'Too close to a pocket';
   }
   for (const b of state.balls) {
     if (b.id === 0 || b.pk) continue;
-    if (Math.hypot(x - b.x, y - b.y) < BALL_R * 2) return 'Overlaps another ball';
+    if (exactHypot(x - b.x, y - b.y) < BALL_R * 2) return 'Overlaps another ball';
   }
   return null;
 }
@@ -190,7 +205,7 @@ function findCueSpot(state: PoolState): { x: number; y: number } {
 function findSpotFor(state: PoolState, occupied: PersistBall[]): { x: number; y: number } {
   for (let dx = 0; dx <= PLAY_W - FOOT_SPOT.x - BALL_R; dx += BALL_R) {
     const x = FOOT_SPOT.x + dx;
-    const clash = occupied.some((b) => !b.pk && b.id !== 0 && Math.hypot(x - b.x, FOOT_SPOT.y - b.y) < BALL_R * 2);
+    const clash = occupied.some((b) => !b.pk && b.id !== 0 && exactHypot(x - b.x, FOOT_SPOT.y - b.y) < BALL_R * 2);
     if (!clash && x <= PLAY_W - BALL_R) return { x, y: FOOT_SPOT.y };
   }
   return { x: FOOT_SPOT.x, y: FOOT_SPOT.y };

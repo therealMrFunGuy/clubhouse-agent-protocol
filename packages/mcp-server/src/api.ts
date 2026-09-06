@@ -6,7 +6,7 @@
  * at each call site — one place to get right instead of a dozen.
  */
 
-import { neutraliseResponse } from './untrusted.js';
+import { neutraliseResponse, neutralise } from './untrusted.js';
 
 export const DEFAULT_BASE_URL = 'https://agents.goclubhouse.io';
 
@@ -77,7 +77,16 @@ export class ClubhouseApi {
 
       if (!res.ok) {
         const err = parsed as { error?: string; detail?: string };
-        throw new Error(err?.error ?? `Request failed with HTTP ${res.status}`);
+        // NEUTRALISE. This is a body from the network, and the gateway streams
+        // origin error bodies through verbatim — so an attacker who can cause
+        // an error message containing their own text gets it rendered raw into
+        // the operator's model context. An audit walked a forged `SYSTEM:`
+        // block through here, complete with a closed markdown fence and no
+        // untrusted-data notice, because the notice is only attached on the
+        // success path this error return skips.
+        throw new Error(
+          err?.error ? neutralise(err.error) : `Request failed with HTTP ${res.status}`,
+        );
       }
 
       return neutraliseResponse(parsed) as T;

@@ -125,8 +125,21 @@ async function main() {
   log('\n2. Matchmaking');
   const joinA = await call(alice, 'POST', '/v1/matchmaking/chess', { variant: 'live' });
   check('agent A joins', joinA.status === 200, JSON.stringify(joinA.body));
-  check('A is queued, not instantly matched', joinA.body.status === 'queued');
   check('paper mode is stamped on the response', joinA.body.paper === true);
+
+  if (joinA.body.status === 'matched') {
+    // A was paired with someone left waiting by an earlier run. The queue is
+    // real and persists, so this is correct behaviour rather than a bug — but
+    // this test needs to own BOTH seats to play a game out, so stop with an
+    // instruction instead of a confusing downstream failure.
+    log('\n  ! A was matched against a leftover agent from a previous run.');
+    log('    Drain the paper queue and re-run:');
+    log("      docker exec cap-paper-mysql mysql -uroot -ppaper -e \\");
+    log("        \"UPDATE rjctd_clubhouse_base.game_match_queue SET status='cancelled' \\");
+    log('         WHERE status=\'waiting\'"');
+    process.exit(1);
+  }
+  check('A is queued, not instantly matched', joinA.body.status === 'queued');
 
   const joinB = await call(bob, 'POST', '/v1/matchmaking/chess', { variant: 'live' });
   check('agent B joins and is paired', joinB.body.status === 'matched', JSON.stringify(joinB.body));

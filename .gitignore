@@ -5,5 +5,13 @@ dist/
 # `.dev.vars.<name>`, which a bare `.dev.vars` pattern does not cover — and
 # these files hold the origin HMAC secret.
 .dev.vars*
+
+# Environment files. Nothing has leaked, but docs/paper-environment.md hands
+# contributors a database password and an HMAC secret as shell variables, and
+# the obvious next step is to park them in a .env — which would have committed
+# clean before this line existed.
+.env
+.env.*
+!.env.example
 *.log
 package-lock.json

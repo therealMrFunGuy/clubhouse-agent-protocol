@@ -14,12 +14,29 @@
  *     KMS satisfies it exactly as well as a local key, so production should use
  *     one. The local implementation exists for the paper environment and tests.
  *
- * What this key can and cannot do is worth being precise about. It authorises
- * claims *up to the cumulative amount an agent has already signed vouchers for*.
- * It cannot invent a debt, cannot claim more than the agent authorised, and
- * cannot touch a channel's deposit outside that bound — those limits are enforced
- * on-chain by the batch-settlement contract, not by this code. A stolen
- * authorizer key is a serious incident, but it is not a drain of every channel.
+ * ## Blast radius — corrected after audit
+ *
+ * An earlier version of this comment claimed a stolen key "is not a drain of
+ * every channel". **That was wrong, and it was wrong in the dangerous
+ * direction**, so it is worth stating precisely what is and is not true.
+ *
+ * On the CLAIM path the old claim holds. `claimWithSignature` carries the
+ * payer's own EIP-712 voucher signature inside each claim tuple and the contract
+ * tracks `totalClaimed` per channel, so this key cannot invent a debt, cannot
+ * exceed `maxClaimableAmount`, and gains nothing from replaying a claim.
+ *
+ * **But the same key also signs refunds, and `refundWithSignature` takes no
+ * payer signature at all.** The receiver-authorizer alone can push funds out of
+ * any channel, immediately, bypassing the withdraw delay. So a stolen key can
+ * destroy every unclaimed receivable and empty every channel. Funds return to
+ * each channel's payer rather than to the attacker — but agents self-register,
+ * so an attacker trivially IS a payer: run up an unbounded tab across channels,
+ * then refund them. That is direct, self-directed profit.
+ *
+ * The practical consequence: a KMS policy for this key MUST refuse
+ * `primaryType: "Refund"` outright. That single restriction is worth more than
+ * everything else in this file, because it is what makes the claim-path bound
+ * the real bound rather than a partial one.
  */
 
 import type { TypedData } from 'viem';

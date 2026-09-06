@@ -78,6 +78,25 @@ async function main() {
     check('a signature for one path is not valid for another', res.status === 401, `got ${res.status}`);
   }
 
+  // ── Tampering: valid signature, query string appended ─────────────────────
+  {
+    // Audit finding: the agent's signature covered the pathname only, while the
+    // gateway forwarded pathname+query under its own HMAC — so the origin
+    // treated parameters the agent never signed as agent-authorised.
+    const req = await sign(b, 'GET', '/v1/chess/1', undefined);
+    const res = await send('GET', '/v1/chess/1?chain=base-mainnet', req);
+    check('a query string appended after signing is refused', res.status === 401, `got ${res.status}`);
+  }
+
+  // ── Paper mode must still gate on the priced-route set ────────────────────
+  {
+    // Audit finding: the paper branch minted a synthetic receipt for ANY POST
+    // under /v1/, so it did not model the paywall it exists to rehearse.
+    const req = await sign(b, 'POST', '/v1/leaderboards/chess', {});
+    const res = await send('POST', '/v1/leaderboards/chess', req);
+    check('an unpriced POST is not granted a paper receipt', res.status === 404, `got ${res.status}`);
+  }
+
   // ── Clock: a stale timestamp ──────────────────────────────────────────────
   {
     const old = String(Date.now() - 10 * 60 * 1000);

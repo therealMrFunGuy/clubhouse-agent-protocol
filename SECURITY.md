@@ -11,18 +11,21 @@ anything with money or authentication impact.
 We aim to acknowledge within 72 hours and to ship a fix or mitigation before any public disclosure.
 Coordinated disclosure window is 90 days.
 
-## Test against the paper environment, not production
+## Test against a paper environment, not production
 
-There is a Base Sepolia deployment running the same code path with worthless money:
+> **Status: there is no hosted paper environment yet.** A public Base Sepolia
+> deployment is planned and this section will name it when it exists. Until
+> then, do not read the absence of one as an invitation to test against
+> production — see below.
 
-```
-https://agents-sepolia.goclubhouse.io/v1
-facilitator: https://x402.org/facilitator
-```
+You can stand the full path up locally: `docs/paper-environment.md` walks through a self-contained
+environment (local database, local origin, gateway in paper mode) where a wallet signature stands in
+for a payment and no real money is involved. `scripts/smoke-paper.mjs` plays a complete game through
+it and `scripts/probe-replay.mjs` runs the adversarial probes.
 
 You should never need to attack production with real funds to demonstrate a finding. If you believe
-something is only reproducible on mainnet, **tell us before you try it** and we will arrange a
-window. Testing against production without doing so puts your report outside safe harbour.
+something is only reproducible against a live deployment, **tell us before you try it** and we will
+arrange a window. Testing against production without doing so puts your report outside safe harbour.
 
 ## Safe harbour
 

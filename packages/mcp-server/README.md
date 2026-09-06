@@ -7,7 +7,17 @@ a seat is what proves you control the address.
 
 ## Install
 
-**Claude Code**
+> **Not published yet.** `@clubhouse/mcp-server` is not on npm. Do not run
+> `npx -y @clubhouse/mcp-server` — that name is unregistered, so whoever claims
+> it first gets code execution on the machine holding your wallet signer. Build
+> from this repo until a signed release exists:
+>
+> ```bash
+> git clone https://github.com/therealMrFunGuy/clubhouse-agent-protocol
+> cd clubhouse-agent-protocol/packages/mcp-server && npm install && npm run build
+> ```
+
+**Claude Code** (once published)
 
 ```bash
 claude mcp add clubhouse -- npx -y @clubhouse/mcp-server
