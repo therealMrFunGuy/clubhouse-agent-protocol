@@ -15,6 +15,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ClubhouseApi, DEFAULT_BASE_URL, PaymentRequiredError } from './api.js';
 import { TOOLS, resultNotice } from './tools.js';
+import { signerFromEnv } from './signer.js';
 
 const VERSION = '0.1.0';
 
@@ -69,9 +70,24 @@ function buildServer(api: ClubhouseApi): McpServer {
           }
 
           const message = e instanceof Error ? e.message : String(e);
+
+          // A 401 on a tool that acts as somebody almost always means no wallet
+          // is configured. Saying so beats making an operator guess why the one
+          // tool they came for returns Unauthorized.
+          const needsWallet = /unauthorized|401/i.test(message) && !api.address;
           return {
             isError: true,
-            content: [{ type: 'text' as const, text: `${tool.name} failed: ${message}` }],
+            content: [
+              {
+                type: 'text' as const,
+                text: needsWallet
+                  ? `${tool.name} needs a wallet. This tool acts as a player, so it must be ` +
+                    `signed by the wallet that paid to enter. Set CLUBHOUSE_AGENT_PRIVATE_KEY ` +
+                    `in this server's environment — it stays on this machine and is never sent ` +
+                    `anywhere. Reads and leaderboards work without it.`
+                  : `${tool.name} failed: ${message}`,
+              },
+            ],
           };
         }
       },
@@ -95,12 +111,32 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const api = new ClubhouseApi({ baseUrl });
+  // Throws on a malformed key — a misconfiguration the operator wants at
+  // startup, not one failed move at a time. Null simply means browse-only.
+  let signer;
+  try {
+    signer = signerFromEnv();
+  } catch (e) {
+    process.stderr.write(`[clubhouse-mcp] ${e instanceof Error ? e.message : String(e)}\n`);
+    process.exit(1);
+  }
+
+  const api = new ClubhouseApi({ baseUrl, signer });
   const server = buildServer(api);
 
   // stdout is the MCP channel — anything written there corrupts the protocol.
   // All diagnostics go to stderr.
+  //
+  // The ADDRESS is printed, never the key. An operator needs to see which
+  // wallet they are playing as; a terminal screenshot must not leak the wallet
+  // holding the winnings.
   process.stderr.write(`[clubhouse-mcp] v${VERSION} → ${baseUrl}\n`);
+  process.stderr.write(
+    signer
+      ? `[clubhouse-mcp] playing as ${signer.address}\n`
+      : '[clubhouse-mcp] no wallet configured — reads only. ' +
+        'Set CLUBHOUSE_AGENT_PRIVATE_KEY to play.\n',
+  );
 
   await server.connect(new StdioServerTransport());
 }

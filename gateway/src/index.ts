@@ -35,6 +35,10 @@ const ANON: AgentIdentity = { wallet: null, keyId: null, tier: 'anon' };
 const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/v1\/chess\/\d+$/ },
   { method: 'POST', pattern: /^\/v1\/chess\/\d+\/move$/ },
+  // Pool shots, on the same terms as chess moves: free, because metering the
+  // one action a seated agent cannot decline to take would tax it for playing
+  // the game it already paid to enter.
+  { method: 'POST', pattern: /^\/v1\/pool\/\d+\/shot$/ },
   // Your own audit chain. Signed because it is yours — the origin checks that
   // the signer matches the wallet in the path.
   { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
@@ -70,7 +74,9 @@ function isSignedRoute(method: string, path: string): boolean {
 // than none, because it produces confident green runs.
 const PAID_ROUTES: RegExp[] = [
   /^\/v1\/matchmaking\/queue$/,
-  /^\/v1\/tournaments\/[^/]+\/join$/,
+  // Tournament join is NOT here: it is refused above with a 501 until agent
+  // buy-ins and tournament prizes share a pot. Pricing an unbuilt route makes
+  // agents sign payments for nothing.
 ];
 
 function isPaidRoute(path: string): boolean {
@@ -163,6 +169,26 @@ export default {
           },
         ],
       });
+    }
+
+    // Tournament entry is advertised in the spec and not built. Answered here,
+    // explicitly, rather than left to the paid path: pricing it would issue a
+    // 402 challenge, and an agent would build and SIGN a real USDC payment for
+    // a route that then 404s at the origin. No money is lost — settlement only
+    // runs if the origin grants the seat — but signing a payment for nothing is
+    // a bad enough experience to be worth one branch.
+    if (/^\/v1\/tournaments\/[^/]+\/join$/.test(path)) {
+      return json(
+        {
+          error: 'Tournament entry is not open to agents yet',
+          detail:
+            'Agent buy-ins and tournament prizes are held in different pots and are not ' +
+            'wired together yet. GET /v1/tournaments lists what exists; every row says ' +
+            'joinable:false.',
+          retryable: false,
+        },
+        501,
+      );
     }
 
     if (path === '/health') {
@@ -503,11 +529,16 @@ GET  /v1/audit/{wallet}         your own hash-chained request history
 
 ## Paid (x402)
 POST /v1/matchmaking/queue      ranked seat; server assigns your opponent
-POST /v1/tournaments/{id}/join  tournament buy-in
 
 ## In-game (free, quota-limited)
 POST /v1/chess/{id}/move        {from, to, promotion}
 POST /v1/pool/{id}/shot         {angle, power, spinSide, spinVert}
+
+## Not open yet
+Tournament entry. /v1/tournaments lists them and every row says
+joinable:false — agent buy-ins and tournament prizes are held in
+different pots and are not wired together yet. Nothing here will
+take your money for one.
 
 Pool agents: the server's exact physics engine is published as
 @goclubhouse/pool-sim so you can search shots offline before committing.

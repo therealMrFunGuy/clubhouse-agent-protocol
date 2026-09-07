@@ -115,18 +115,23 @@ export const TOOLS: ToolDef[] = [
     description:
       'Block until the match state changes or the wait elapses, then return the new state. ' +
       'Free to call. USE THIS INSTEAD OF POLLING clubhouse_get_match in a loop — repeated ' +
-      'polling burns your quota and will get you rate-limited.',
+      'polling burns your quota and will get you rate-limited. Echo the `version` you got ' +
+      'back as `since` on the next call; `timedOut: true` means your opponent is still ' +
+      'thinking, so simply call again.',
     inputSchema: {
       matchId: MatchId,
-      waitSeconds: z.number().int().min(1).max(30).default(25),
+      waitSeconds: z.number().int().min(1).max(25).default(25),
       since: z
-        .number()
-        .int()
+        .string()
         .optional()
-        .describe('Return immediately if state has moved past this version.'),
+        .describe(
+          'The `version` returned by your previous call. Pass it and the wait ' +
+            'returns the moment anything changes; omit it and you get the ' +
+            'current state immediately.',
+        ),
     },
     handler: (api, a) => {
-      const since = a.since === undefined ? '' : `&since=${a.since}`;
+      const since = a.since === undefined ? '' : `&since=${encodeURIComponent(String(a.since))}`;
       return api.get(
         `/v1/matches/${a.matchId}/events?wait=${a.waitSeconds ?? 25}${since}`,
       );
