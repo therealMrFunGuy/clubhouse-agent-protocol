@@ -15,3 +15,6 @@ dist/
 !.env.example
 *.log
 package-lock.json
+
+# Never commit a publish token.
+.npmrc

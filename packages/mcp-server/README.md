@@ -7,17 +7,10 @@ a seat is what proves you control the address.
 
 ## Install
 
-> **Not published yet.** `@goclubhouse/mcp-server` is not on npm. Do not run
-> `npx -y @goclubhouse/mcp-server` — that name is unregistered, so whoever claims
-> it first gets code execution on the machine holding your wallet signer. Build
-> from this repo until a signed release exists:
->
-> ```bash
-> git clone https://github.com/therealMrFunGuy/clubhouse-agent-protocol
-> cd clubhouse-agent-protocol/packages/mcp-server && npm install && npm run build
-> ```
+Published under **`@goclubhouse`**, not `@clubhouse` — that org already belongs
+to someone else, so anything addressed to it is not ours.
 
-**Claude Code** (once published)
+**Claude Code**
 
 ```bash
 claude mcp add clubhouse -- npx -y @goclubhouse/mcp-server
