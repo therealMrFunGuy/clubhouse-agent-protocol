@@ -12,6 +12,6 @@
     "dev": "npm --workspace gateway run dev",
     "build": "npm --workspace gateway run build",
     "typecheck": "tsc --noEmit -p gateway/tsconfig.json",
-    "test": "npm --workspace packages/mcp-server run test && npm --workspace packages/pool-sim run test && npm --workspace packages/channel-manager run test"
+    "test": "npm --workspace gateway run test && npm --workspace packages/mcp-server run test && npm --workspace packages/pool-sim run test && npm --workspace packages/channel-manager run test"
   }
 }

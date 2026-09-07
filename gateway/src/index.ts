@@ -10,7 +10,14 @@
  * before any money route goes live.
  */
 
-import { getPaymentServer, adapterFor, paymentHeaderFrom, NETWORK } from './x402';
+import {
+  getPaymentServer,
+  adapterFor,
+  paymentHeaderFrom,
+  declaredX402Version,
+  SUPPORTED_X402_VERSION,
+  NETWORK,
+} from './x402';
 import { forwardToOrigin, chainIdForNetwork } from './origin';
 import { verifyAgentSignature } from './agentAuth';
 import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
@@ -297,6 +304,27 @@ export default {
         return json({ error: 'Unknown endpoint' }, 404);
       }
 
+      // ── Refuse anything but v2, BEFORE the library matches requirements ──
+      //
+      // processHTTPRequest is what runs the version switch, and v1's branch
+      // checks only scheme and network — so a v1 payload gets to declare its
+      // own `amount` and `asset`. See declaredX402Version for the full reason.
+      // Checked here rather than after, because "after" is too late: the weak
+      // match has already chosen the requirement by then.
+      const declaredVersion = declaredX402Version(ctx.paymentHeader);
+      if (declaredVersion !== null && declaredVersion !== SUPPORTED_X402_VERSION) {
+        console.warn(
+          `[gateway] refused payment declaring x402Version ${declaredVersion} on ${path}`,
+        );
+        return json(
+          {
+            error: `Unsupported x402 version — this gateway requires v${SUPPORTED_X402_VERSION}`,
+            x402Version: SUPPORTED_X402_VERSION,
+          },
+          400,
+        );
+      }
+
       const result = (await server.processHTTPRequest(ctx as never)) as
         | { type: 'no-payment-required' }
         | { type: 'payment-error'; response?: { status: number; headers: Record<string, string>; body: unknown } }
@@ -335,17 +363,41 @@ export default {
       const payer: string | null = auth.from ?? null;
       const settlementNonce: string | null = auth.nonce ?? null;
 
-      // The terms live on `accepted` inside the payload, and ALSO come back as
-      // a sibling `paymentRequirements`. Read both, because taking only the
-      // sibling produced amount '0' — which the origin's price check correctly
-      // refused as underpaid, on a payment that was in fact for the full $1.
-      // `network` and `scheme` are NOT top-level on the payload at all.
-      const accepted = payload.accepted ?? (result as any).paymentRequirements ?? {};
-      const network = accepted.network ?? env.X402_NETWORK ?? NETWORK.baseMainnet;
+      // ── The terms. SERVER-side only ─────────────────────────────────────
+      //
+      // `paymentRequirements` is `matchingRequirements` — the requirement this
+      // gateway advertised and the facilitator actually verified and settled
+      // against. `paymentPayload.accepted` is the CLIENT's echo of it.
+      //
+      // This used to prefer the echo, because reading the sibling once produced
+      // `amount: '0'` and the origin correctly refused a real $1 payment as
+      // underpaid. That was a different bug; the live 402 carries
+      // `amount: "1000000"` on the requirement. The workaround outlived the
+      // problem and became the hole: the echo is client input, and under a
+      // declared v1 the library never checks it, so a caller could pay $1 and
+      // declare $250. That figure is what the origin signs into a receipt,
+      // stores, and SUMS into the pot a winner is paid from.
+      //
+      // So: never fall back to the payload for a money field. A missing field
+      // here is a version skew with the library worth failing loudly on, not
+      // something to paper over with a default — defaulting is precisely how
+      // the '0' went unnoticed.
+      const requirements = (result as any).paymentRequirements ?? {};
+      const network = requirements.network;
+      const asset = requirements.asset;
+      const amount = requirements.amount;
 
       if (!payer || !settlementNonce) {
         console.error('[gateway] verified payment lacked payer or nonce — refusing');
         return json({ error: 'Payment could not be attributed' }, 502);
+      }
+
+      if (!network || !asset || typeof amount !== 'string' || !/^\d+$/.test(amount)) {
+        console.error(
+          '[gateway] verified payment carried no usable server-side terms — refusing. ' +
+            `network=${network} asset=${asset} amount=${amount}`,
+        );
+        return json({ error: 'Payment terms could not be established' }, 502);
       }
 
       const identity: AgentIdentity = { wallet: payer, keyId: null, tier: 'ranked' };
@@ -358,10 +410,10 @@ export default {
         settledNetwork: network,
         payment: {
           nonce: settlementNonce,
-          scheme: accepted.scheme ?? 'exact',
+          scheme: requirements.scheme ?? 'exact',
           network,
-          asset: accepted.asset ?? '',
-          amount: accepted.amount ?? '0',
+          asset,
+          amount,
           resource: path,
         },
       });
