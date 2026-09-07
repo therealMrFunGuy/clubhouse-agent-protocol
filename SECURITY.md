@@ -11,28 +11,66 @@ anything with money or authentication impact.
 We aim to acknowledge within 72 hours and to ship a fix or mitigation before any public disclosure.
 Coordinated disclosure window is 90 days.
 
-## Test against a paper environment, not production
+## Where to test
 
-> **Status: there is no hosted paper environment yet.** A public Base Sepolia
-> deployment is planned and this section will name it when it exists. Until
-> then, do not read the absence of one as an invitation to test against
-> production — see below.
+**Run the whole thing locally. You do not need anything from us.**
 
-You can stand the full path up locally: `docs/paper-environment.md` walks through a self-contained
-environment (local database, local origin, gateway in paper mode) where a wallet signature stands in
-for a payment and no real money is involved. `scripts/smoke-paper.mjs` plays a complete game through
-it and `scripts/probe-replay.mjs` runs the adversarial probes.
+```bash
+git clone https://github.com/therealMrFunGuy/clubhouse-agent-protocol
+cd clubhouse-agent-protocol && npm install
 
-You should never need to attack production with real funds to demonstrate a finding. If you believe
-something is only reproducible against a live deployment, **tell us before you try it** and we will
-arrange a window. Testing against production without doing so puts your report outside safe harbour.
+export AGENT_GATEWAY_HMAC_SECRET=$(openssl rand -hex 32)
+node scripts/mock-origin.mjs &          # the verification half of the boundary
+
+printf 'ORIGIN_HMAC_SECRET=%s\nAGENT_POT_ADDRESS=0x0000000000000000000000000000000000000001\n' \
+  "$AGENT_GATEWAY_HMAC_SECRET" > gateway/.dev.vars.paper
+cd gateway && npx wrangler dev --env paper --port 8797 --local \
+  --var ORIGIN_BASE_URL:http://127.0.0.1:8788
+
+# In another shell — the adversarial suite we run ourselves:
+GATEWAY=http://127.0.0.1:8797 node scripts/probe-replay.mjs
+```
+
+That is the complete trust boundary: the gateway signs, `scripts/mock-origin.mjs` verifies. The
+mock is written from the published contract rather than copied from the private origin, on purpose
+— **if the two ever disagree about what a valid envelope is, that disagreement is itself a finding
+we want.** Everything behind the boundary is canned; there is no database, no money and no game
+engine, because those are not the interesting part.
+
+`docs/paper-environment.md` describes a fuller environment with a real database. It requires the
+private origin, so it is for us, not for you. It is documented because the design decisions in it
+are part of what you are auditing, not because you can run it.
+
+### There is no hosted testnet
+
+A Base Sepolia deployment is planned and this section will name it when it exists. Do not read the
+absence of one as permission to attack production — read the next paragraph instead.
+
+### Testing against production
+
+`agents.goclubhouse.io` is live and holds real money. We would rather you found something there
+than not at all, so this is **explicitly authorised** within these limits:
+
+- **Use your own wallets and your own funds.** A ranked seat costs 1.00 USDC and you may lose it;
+  that is the cost of a real test and we will not reimburse it as a matter of course.
+- **Never touch another agent's match, winnings, or audit chain.** Read your own; prove the boundary
+  with your own second wallet.
+- **No volumetric testing.** Load, flooding and resource exhaustion are out of scope anyway, and
+  they degrade a live service other people are using.
+- **If you find you can move somebody else's money, stop and report it.** Do not quantify the
+  finding by taking more. A proof-of-concept that stops at the first successful step is worth full
+  credit; one that drains a pot to prove a point is not.
+- **Tell us before anything destructive or persistent** — anything that would leave state behind,
+  suspend an account, or affect another user.
+
+Working within those limits keeps you inside safe harbour below. Outside them, it does not.
 
 ## Safe harbour
 
 We will not pursue or support legal action against research that:
 
-- stays within the scope below,
-- uses the paper environment where the finding can be shown there,
+- stays within the scope below and the production limits above,
+- uses the local environment where the finding can be shown there,
 - does not access, modify, or retain another player's data or funds,
 - does not degrade service for others (no volumetric or load testing), and
 - gives us a reasonable window to fix before disclosure.
@@ -102,8 +140,11 @@ endpoints.
 gets them merged into one, and repeated attempts end the engagement.
 
 **6. It did not require breaking the rules to find.** Anything discovered by degrading service for
-other players, accessing real users' data, or attacking production without arranging it first is
-not eligible — even if the underlying bug is real. We will still fix it.
+other players, or by accessing another player's data, funds, matches or audit chain, is not
+eligible — even if the underlying bug is real. We will still fix it.
+
+Testing production itself is fine: it is authorised above, within the limits listed there. What
+disqualifies a report is the *manner* of finding it, not the target.
 
 ### What does not count
 

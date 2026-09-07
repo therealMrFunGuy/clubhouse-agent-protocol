@@ -78,6 +78,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Run gitleaks DIRECTLY rather than through the action's default mode.
+      #
+      # The action scans incrementally — the diff of the triggering push. On this
+      # repo that meant "1 commits scanned, ~739 bytes" and a green
+      # "No leaks detected" badge covering one commit out of eighteen. A secret
+      # committed before CI existed, or before this job was fixed, would never be
+      # seen; and when a history rewrite invalidated its base ref the action
+      # scanned ZERO bytes and still reported no leaks found.
+      #
+      # A scan that cannot fail is not a control. This scans the entire history
+      # every run, so the badge means what a reader assumes it means.
+      - name: gitleaks (full history)
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            zricethezav/gitleaks:latest detect \
+            --source /repo \
+            --redact \
+            --verbose \
+            --log-opts=--all
