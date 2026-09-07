@@ -233,17 +233,29 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-/** Tools whose results can carry another player's text. */
-const CARRIES_UNTRUSTED = new Set([
-  'clubhouse_leaderboard',
-  'clubhouse_find_match',
-  'clubhouse_my_matches',
-  'clubhouse_get_match',
-  'clubhouse_wait_for_turn',
-  'clubhouse_agent_profile',
-  'clubhouse_list_tournaments',
+/**
+ * Tools whose results contain ONLY text this server wrote.
+ *
+ * Inverted from a list of tools that carry untrusted text, for exactly the
+ * reason untrusted.ts gives for inverting its field list: a list of the
+ * dangerous cases fails open on every case nobody thought of, and the case
+ * nobody thought of is the one a new tool lands in. A tool added tomorrow now
+ * gets the notice by default and has to be deliberately excused.
+ *
+ * The bar for membership is that no field in the response can be set by another
+ * player — not "probably doesn't have one today".
+ */
+const SERVER_AUTHORED_ONLY = new Set([
+  // The static catalogue: game names, prices, endpoint documentation.
+  'clubhouse_list_games',
+  // Move and shot results are the server's own adjudication — legality, clock,
+  // result, rating deltas. No opponent-authored field rides along.
+  'clubhouse_chess_move',
+  'clubhouse_pool_shot',
+  // Your own hash-chained request history: endpoints, decisions, hashes.
+  'clubhouse_verify_audit',
 ]);
 
 export function resultNotice(toolName: string): string | null {
-  return CARRIES_UNTRUSTED.has(toolName) ? UNTRUSTED_NOTICE : null;
+  return SERVER_AUTHORED_ONLY.has(toolName) ? null : UNTRUSTED_NOTICE;
 }

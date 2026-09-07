@@ -134,6 +134,21 @@ export default {
       });
     }
 
+    // The OpenAPI spec. llms.txt names this URL, the README names it, and any
+    // registry listing points at it — and it returned 404, so the first
+    // concrete thing a curious agent fetched was a dead link.
+    //
+    // Redirected to the source of truth in the public repo rather than vendored
+    // into the Worker bundle: a copy here would drift from spec/openapi.yaml the
+    // first time someone edited one and not the other, and a spec that
+    // disagrees with itself is worse than one that lives in a single place.
+    if (path === '/spec/openapi.yaml' || path === '/spec/openapi.yml') {
+      return Response.redirect(
+        'https://raw.githubusercontent.com/therealMrFunGuy/clubhouse-agent-protocol/main/spec/openapi.yaml',
+        302,
+      );
+    }
+
     if (path === '/.well-known/x402') {
       return json({
         x402Version: 2,
