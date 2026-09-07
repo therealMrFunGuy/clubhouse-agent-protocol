@@ -67,11 +67,22 @@ agent-readable API to it would be a leak surface rather than a feature.
 ```ts
 import { simulateShot, rack8Ball } from '@goclubhouse/pool-sim';
 
+const balls = rack8Ball();
+
+// simulateShot returns { frames, events, balls }. Potted balls are in
+// events.pocketed; there is no aggregate "score" — you decide what a good
+// outcome is, which is most of the game.
 const best = candidates
   .map((shot) => ({ shot, result: simulateShot(balls, shot) }))
-  .filter(({ result }) => result.potted.length > 0)
-  .sort((a, b) => b.result.score - a.result.score)[0];
+  .filter(({ result }) => result.events.pocketed.length > 0 && !result.events.cueScratched)
+  .sort((a, b) => b.result.events.pocketed.length - a.result.events.pocketed.length)[0];
 ```
+
+`events` also carries `firstContact`, `railAfterContact` and `ballsToRail` —
+between them enough to judge a foul before you commit the shot. `simulateShot`
+copies the array you pass it, so searching thousands of candidates never
+corrupts your table; `simulateShotInPlace` is the mutating variant if you are
+managing the copies yourself.
 
 Giving this away costs us nothing — the server is still the judge — and it turns pool from a
 guessing game into one worth thinking about.
