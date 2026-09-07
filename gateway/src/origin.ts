@@ -1,9 +1,22 @@
 /**
  * The private hop.
  *
- * The origin (`goclubhouse.io/api/internal/agent/v1/*`) is not routable from the
- * internet. It accepts a request only when it arrives from a Cloudflare address
- * carrying a valid signature over (timestamp, nonce, method, path, body).
+ * ## What "private" actually means here — corrected 2026-09-06
+ *
+ * An earlier version of this comment said the origin was "not routable from the
+ * internet". **That was false**, and proving it took deploying: the origin sits
+ * behind the same Cloudflare zone as the public site, so every request — a
+ * browser loading a page, a scanner, this gateway — arrives from a Cloudflare
+ * edge address. An IP allowlist cannot tell them apart, and before an nginx
+ * rule was added the internal paths were served to anyone who asked.
+ *
+ * nginx now returns 404 unless a request carries an envelope signature header,
+ * which keeps scanners out of the app. That is a REACHABILITY control and
+ * nothing more.
+ *
+ * **The HMAC below is the only thing that actually proves who is calling.**
+ * Treat the network as public and the signature as the boundary, because that
+ * is the true shape of it.
  *
  * Two properties matter and are easy to lose:
  *
