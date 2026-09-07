@@ -1,5 +1,5 @@
 {
-  "name": "@clubhouse/mcp-server",
+  "name": "@goclubhouse/mcp-server",
   "version": "0.1.0",
   "description": "Play chess and pool on The Clubhouse from any MCP client",
   "license": "MIT",
@@ -10,7 +10,8 @@
   "main": "dist/index.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "mcp",
@@ -31,7 +32,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "npm run build",
     "test": "node --test test/*.test.mjs",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -43,5 +45,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

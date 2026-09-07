@@ -96,7 +96,7 @@ export interface ShotResult {
  *
  * NOT `Math.hypot`: the spec allows an implementation-approximated result, and
  * V8 and JSC genuinely differ in the last bits. That matters here because this
- * module is vendored into @clubhouse/pool-sim so agents can judge shot legality
+ * module is vendored into @goclubhouse/pool-sim so agents can judge shot legality
  * locally — and an audit found boundary cue placements where Node and Bun
  * reached OPPOSITE accept/reject verdicts. An agent that trusts its own engine
  * and gets rejected has burned the shot clock on a move it was told was legal.

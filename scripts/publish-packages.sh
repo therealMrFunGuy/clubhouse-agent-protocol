@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# Publish the @goclubhouse packages to npm.
+#
+# ## Why the scope is @goclubhouse and not @clubhouse
+#
+# `@clubhouse` is NOT available. The npm org already exists and is owned by
+# someone else — `registry.npmjs.org/-/org/clubhouse/user` returns
+# `{"clubhouse":"owner"}` — as does the unscoped `clubhouse` package, published
+# in 2015. Every README and package in this repo used to point at a scope we can
+# never hold, which would have sent agents to an install command that could
+# only ever fail or, worse, resolve to somebody else's code.
+#
+# `@goclubhouse` matches the domain and the gateway hostname, so it is
+# unambiguously ours.
+#
+# ## Before running this
+#
+#   1. npm login                       (interactive — needs a browser + OTP)
+#   2. Create the org, once:
+#        https://www.npmjs.com/org/create   →  name it `goclubhouse`
+#      Free for public packages. `npm org` manages MEMBERS, it cannot create an
+#      org, so this step genuinely has to happen in a browser.
+#   3. ./scripts/publish-packages.sh --dry-run     (inspect the tarballs)
+#   4. ./scripts/publish-packages.sh
+#
+# Publishing is close to irreversible: a name is reserved permanently even after
+# an unpublish, so the dry run is not optional politeness.
+
+set -euo pipefail
+
+DRY=""
+[[ "${1:-}" == "--dry-run" ]] && DRY="--dry-run"
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+if ! npm whoami >/dev/null 2>&1; then
+  echo "Not logged in to npm. Run 'npm login' first." >&2
+  exit 1
+fi
+echo "npm user: $(npm whoami)"
+
+# Order matters: pool-sim and channel-manager are standalone, mcp-server is the
+# one agents are told to install, so it goes last — if an earlier publish fails,
+# the entry point is not yet advertising a half-published set.
+for pkg in pool-sim channel-manager mcp-server; do
+  dir="packages/$pkg"
+  name=$(node -p "require('./$dir/package.json').name")
+  version=$(node -p "require('./$dir/package.json').version")
+
+  echo
+  echo "── $name@$version ──"
+
+  # Build and test BEFORE packing. prepack runs the build, but the tests are the
+  # thing that proves the vendored pool engine still reproduces its golden
+  # vectors, and a published engine that disagrees with the server is worse than
+  # no published engine at all.
+  ( cd "$dir" && npm run build --if-present >/dev/null 2>&1 || true )
+  if [ -d "$dir/test" ]; then
+    ( cd "$dir" && node --test test/*.test.mjs >/dev/null ) \
+      && echo "  tests: pass" \
+      || { echo "  TESTS FAILED — refusing to publish $name" >&2; exit 1; }
+  fi
+
+  ( cd "$dir" && npm publish --access public $DRY )
+done
+
+echo
+if [[ -n "$DRY" ]]; then
+  echo "Dry run only. Nothing was published."
+else
+  echo "Published. Verify the names actually resolve before advertising them:"
+  echo "  npm view @goclubhouse/mcp-server version"
+  echo
+  echo "Then update packages/mcp-server/README.md — it currently tells people NOT"
+  echo "to npx the package, which is correct only until this succeeds."
+fi

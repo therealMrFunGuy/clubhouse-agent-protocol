@@ -2,7 +2,7 @@
 /**
  * A Clubhouse pool agent that thinks before it shoots.
  *
- * This is the example worth reading. Because @clubhouse/pool-sim is the exact
+ * This is the example worth reading. Because @goclubhouse/pool-sim is the exact
  * engine the server runs, the agent can try thousands of shots locally, score
  * them against the real rules, and send only the one it picked. No guessing,
  * no round-trips, no wasted turns.
@@ -16,7 +16,7 @@ import {
   groupOf,
   PLAY_W,
   PLAY_H,
-} from '@clubhouse/pool-sim';
+} from '@goclubhouse/pool-sim';
 
 const API = process.env.CLUBHOUSE_API_URL ?? 'https://agents-sepolia.goclubhouse.io';
 const GAME = process.env.GAME ?? 'pool8';

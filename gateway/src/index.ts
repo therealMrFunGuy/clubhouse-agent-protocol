@@ -297,53 +297,57 @@ export default {
         return json({ error: 'Unknown endpoint' }, 404);
       }
 
-      const result = (await server.processHTTPRequest(ctx as never)) as {
-        type: string;
-        response?: { status: number; headers: Record<string, string>; body: unknown };
-        payment?: {
-          payer?: string;
-          network?: string;
-          nonce?: string;
-          asset?: string;
-          amount?: string;
-          scheme?: string;
-          transaction?: string;
-        };
-      };
+      const result = (await server.processHTTPRequest(ctx as never)) as
+        | { type: 'no-payment-required' }
+        | { type: 'payment-error'; response?: { status: number; headers: Record<string, string>; body: unknown } }
+        | {
+            type: 'payment-verified';
+            paymentPayload: any;
+            paymentRequirements: any;
+            declaredExtensions?: Record<string, unknown>;
+          };
 
       // Unpaid (or invalid) — hand back the 402 challenge verbatim.
-      if (result.type === 'payment-error' && result.response) {
-        return new Response(JSON.stringify(result.response.body ?? {}), {
-          status: result.response.status,
+      if (result.type === 'payment-error') {
+        const r = (result as any).response;
+        return new Response(JSON.stringify(r?.body ?? {}), {
+          status: r?.status ?? 402,
           headers: {
-            ...result.response.headers,
+            ...(r?.headers ?? {}),
             'access-control-allow-origin': '*',
             'access-control-expose-headers': 'PAYMENT-REQUIRED, PAYMENT-RESPONSE',
           },
         });
       }
-
-      // Paid. The payer address is proven by signature — this is the identity.
-      const payer = result.payment?.payer ?? null;
-      const network = result.payment?.network ?? env.X402_NETWORK ?? NETWORK.baseMainnet;
-      if (!payer) {
-        return json({ error: 'Payment verified but no payer resolved' }, 500);
+      if (result.type !== 'payment-verified') {
+        return json({ error: 'Unknown endpoint' }, 404);
       }
 
-      // The replay guard for the payment itself is the origin's UNIQUE index on
-      // agent_x402_payments.nonce — a database constraint rather than a check
-      // here, because two concurrent requests both pass a check and only one
-      // survives a constraint. This nonce is what it keys on, so a settlement
-      // that arrives without one cannot be allowed through: no nonce means no
-      // way to say "this payment bought exactly one seat".
-      const settlementNonce = result.payment?.nonce ?? result.payment?.transaction;
-      if (!settlementNonce) {
-        console.error('[gateway] settled payment carried no nonce or tx — refusing');
-        return json({ error: 'Payment could not be recorded' }, 502);
+      // ── Who paid, and for what ──────────────────────────────────────────
+      //
+      // The payer is inside the signed EIP-3009 authorisation, NOT on a
+      // top-level `payment` object. Reading `result.payment.payer` returned
+      // undefined and refused every real payment the first time a live client
+      // met this gateway. `from` is the address that signed the transfer, which
+      // is exactly the identity we want: proven by signature, not asserted.
+      const payload = (result as any).paymentPayload ?? {};
+      const auth = payload.payload?.authorization ?? {};
+      const payer: string | null = auth.from ?? null;
+      const settlementNonce: string | null = auth.nonce ?? null;
+
+      // The terms live on `accepted` inside the payload, and ALSO come back as
+      // a sibling `paymentRequirements`. Read both, because taking only the
+      // sibling produced amount '0' — which the origin's price check correctly
+      // refused as underpaid, on a payment that was in fact for the full $1.
+      // `network` and `scheme` are NOT top-level on the payload at all.
+      const accepted = payload.accepted ?? (result as any).paymentRequirements ?? {};
+      const network = accepted.network ?? env.X402_NETWORK ?? NETWORK.baseMainnet;
+
+      if (!payer || !settlementNonce) {
+        console.error('[gateway] verified payment lacked payer or nonce — refusing');
+        return json({ error: 'Payment could not be attributed' }, 502);
       }
 
-      // TODO(phase-3): quota and the payout circuit breaker MUST land here
-      // before any money route is enabled in production.
       const identity: AgentIdentity = { wallet: payer, keyId: null, tier: 'ranked' };
 
       const upstream = await forwardToOrigin(env, {
@@ -354,21 +358,55 @@ export default {
         settledNetwork: network,
         payment: {
           nonce: settlementNonce,
-          scheme: result.payment?.scheme ?? 'exact',
+          scheme: accepted.scheme ?? 'exact',
           network,
-          asset: result.payment?.asset ?? '',
-          // Exact base units. Defaulting to '0' rather than guessing keeps a
-          // missing amount visible in the ledger instead of inventing a figure.
-          amount: result.payment?.amount ?? '0',
+          asset: accepted.asset ?? '',
+          amount: accepted.amount ?? '0',
           resource: path,
         },
       });
 
-      return new Response(upstream.body, {
+      // ── Settle ONLY if the origin actually granted the seat ─────────────
+      //
+      // processHTTPRequest VERIFIES; it does not move money. Settlement is a
+      // separate call, and putting it AFTER the origin hop is what makes this
+      // path safe by construction: a refused or failed join never charges the
+      // agent, because the transfer is never submitted.
+      //
+      // The reverse order — settle then forward — is the fee-stranding bug this
+      // project already fixed once on the origin side, and it would have been
+      // reintroduced here at a layer where no compensating delete can reach.
+      const upstreamBody = await upstream.text();
+      let settleHeaders: Record<string, string> = {};
+
+      if (upstream.ok) {
+        try {
+          const settled: any = await (server as any).processSettlement(
+            (result as any).paymentPayload,
+            (result as any).paymentRequirements,
+            (result as any).declaredExtensions,
+          );
+          if (settled?.success) {
+            settleHeaders = settled.headers ?? {};
+          } else {
+            // The agent holds a seat it has not paid for. Better than the
+            // inverse, and loud so it cannot pass unnoticed.
+            console.error(
+              `[gateway] SETTLEMENT FAILED after a granted seat — payer ${payer}, nonce ${settlementNonce}: ${settled?.errorReason ?? 'unknown'}`,
+            );
+          }
+        } catch (e) {
+          console.error(`[gateway] settlement threw for payer ${payer}:`, e);
+        }
+      }
+
+      return new Response(upstreamBody, {
         status: upstream.status,
         headers: {
+          ...settleHeaders,
           'content-type': 'application/json; charset=utf-8',
           'access-control-allow-origin': '*',
+          'access-control-expose-headers': 'PAYMENT-RESPONSE',
           'x-cap-chain': chainIdForNetwork(network),
         },
       });
@@ -405,7 +443,7 @@ POST /v1/chess/{id}/move        {from, to, promotion}
 POST /v1/pool/{id}/shot         {angle, power, spinSide, spinVert}
 
 Pool agents: the server's exact physics engine is published as
-@clubhouse/pool-sim so you can search shots offline before committing.
+@goclubhouse/pool-sim so you can search shots offline before committing.
 
 Poker is deliberately not exposed (hidden information).
 Bug bounty: https://github.com/therealMrFunGuy/clubhouse-agent-protocol/blob/main/SECURITY.md

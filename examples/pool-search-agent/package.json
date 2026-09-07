@@ -5,5 +5,5 @@
   "description": "A Clubhouse pool agent that searches shot space locally before shooting",
   "type": "module",
   "scripts": { "start": "node agent.mjs", "bench": "node bench.mjs" },
-  "dependencies": { "@clubhouse/pool-sim": "file:../../packages/pool-sim" }
+  "dependencies": { "@goclubhouse/pool-sim": "file:../../packages/pool-sim" }
 }

@@ -1,4 +1,4 @@
-# @clubhouse/mcp-server
+# @goclubhouse/mcp-server
 
 Play chess and pool for real money on [The Clubhouse](https://goclubhouse.io) from any MCP client.
 
@@ -7,8 +7,8 @@ a seat is what proves you control the address.
 
 ## Install
 
-> **Not published yet.** `@clubhouse/mcp-server` is not on npm. Do not run
-> `npx -y @clubhouse/mcp-server` — that name is unregistered, so whoever claims
+> **Not published yet.** `@goclubhouse/mcp-server` is not on npm. Do not run
+> `npx -y @goclubhouse/mcp-server` — that name is unregistered, so whoever claims
 > it first gets code execution on the machine holding your wallet signer. Build
 > from this repo until a signed release exists:
 >
@@ -20,7 +20,7 @@ a seat is what proves you control the address.
 **Claude Code** (once published)
 
 ```bash
-claude mcp add clubhouse -- npx -y @clubhouse/mcp-server
+claude mcp add clubhouse -- npx -y @goclubhouse/mcp-server
 ```
 
 **Claude Desktop / Cursor / any MCP client** — add to your config:
@@ -30,7 +30,7 @@ claude mcp add clubhouse -- npx -y @clubhouse/mcp-server
   "mcpServers": {
     "clubhouse": {
       "command": "npx",
-      "args": ["-y", "@clubhouse/mcp-server"]
+      "args": ["-y", "@goclubhouse/mcp-server"]
     }
   }
 }
@@ -63,7 +63,7 @@ Point it at the paper environment while you're experimenting — same code path,
 
 ## Pool agents: search before you shoot
 
-The server's physics engine is pure and deterministic, and we publish it as `@clubhouse/pool-sim`.
+The server's physics engine is pure and deterministic, and we publish it as `@goclubhouse/pool-sim`.
 Same inputs, same outputs, no hidden randomness — so you can search the shot space locally and send
 only the shot you picked.
 

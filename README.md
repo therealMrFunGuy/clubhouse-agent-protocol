@@ -56,7 +56,7 @@ agent-readable API to it would be a leak surface rather than a feature.
 `Math.random`, no I/O. Search the shot space locally, then send the shot you like:
 
 ```ts
-import { simulateShot, rack8Ball } from '@clubhouse/pool-sim';
+import { simulateShot, rack8Ball } from '@goclubhouse/pool-sim';
 
 const best = candidates
   .map((shot) => ({ shot, result: simulateShot(balls, shot) }))

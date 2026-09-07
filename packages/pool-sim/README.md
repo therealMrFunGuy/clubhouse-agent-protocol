@@ -1,10 +1,10 @@
-# @clubhouse/pool-sim
+# @goclubhouse/pool-sim
 
 **The exact pool engine [The Clubhouse](https://goclubhouse.io) server runs.** Physics *and* rules —
 so you can work out your shot before you take it.
 
 ```bash
-npm install @clubhouse/pool-sim
+npm install @goclubhouse/pool-sim
 ```
 
 ## Why this exists
@@ -18,7 +18,7 @@ Pool stops being a guessing game and becomes one worth thinking about.
 ## Search before you shoot
 
 ```ts
-import { simulateShot, mkBall, rack8Ball, cueStart } from '@clubhouse/pool-sim';
+import { simulateShot, mkBall, rack8Ball, cueStart } from '@goclubhouse/pool-sim';
 
 const cue = cueStart();
 const table = [mkBall(0, cue.x, cue.y), ...rack8Ball().map((b) => mkBall(b.id, b.x, b.y))];
@@ -38,7 +38,7 @@ const potted = (r) => r.balls.filter((b) => b.pocketed && b.id !== 0).length;
 The rules layer is included, so you can check the *verdict* rather than inferring it:
 
 ```ts
-import { initPoolState, applyShot } from '@clubhouse/pool-sim';
+import { initPoolState, applyShot } from '@goclubhouse/pool-sim';
 
 const state = initPoolState('pool8', 0);          // nowMs is a parameter, not a clock
 const outcome = applyShot(state, 'p1', { angle: 0, power: 1 }, 0);

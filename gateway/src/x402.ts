@@ -37,6 +37,32 @@ export const USDC: Record<string, string> = {
 };
 
 /**
+ * The asset's EIP-712 domain, which the 402 challenge MUST carry.
+ *
+ * The `exact` scheme pays by signing an EIP-3009 `TransferWithAuthorization`,
+ * and that signature is over a typed-data domain built from the token's own
+ * `name` and `version`. A challenge without them is unpayable: the client has
+ * nothing to sign against and refuses, which is exactly what happened the first
+ * time a real client met this gateway —
+ *
+ *   "EIP-712 domain parameters (name, version) are required in payment
+ *    requirements for asset 0x8335…2913"
+ *
+ * The gateway emitted `extra: {}` and every conforming agent would have bounced
+ * off it. Nothing in the paper environment caught this, because paper mode
+ * substitutes a wallet signature and never builds a real payment.
+ *
+ * Values are read from the contracts themselves, not assumed: Base mainnet USDC
+ * reports name "USD Coin" and version "2" — NOT "USDC", which is the obvious
+ * guess and would produce a signature the token rejects.
+ */
+export const ASSET_EIP712: Record<string, { name: string; version: string }> = {
+  [NETWORK.baseMainnet]: { name: 'USD Coin', version: '2' },
+  [NETWORK.baseSepolia]: { name: 'USDC', version: '2' },
+  [NETWORK.polygonMainnet]: { name: 'USD Coin', version: '2' },
+};
+
+/**
  * Public facilitators verified to advertise `exact` on Base mainnet
  * (probed 2026-09-05). Listed in preference order — the gateway treats the
  * facilitator as swappable, so an outage at one is a config change, not an
@@ -79,12 +105,18 @@ export function buildRoutes(env: Env) {
   const payTo = env.AGENT_POT_ADDRESS;
   if (!payTo) throw new Error('AGENT_POT_ADDRESS is not configured');
 
+  const domain = ASSET_EIP712[network];
+  if (!domain) throw new Error(`No EIP-712 domain configured for ${network}`);
+
   const option = (price: string) => ({
     scheme: 'exact',
     network,
     payTo,
     price: { amount: usdc(price), asset },
     maxTimeoutSeconds: 120,
+    // Carried into the challenge's `extra`. Without this the client cannot
+    // build the EIP-3009 signature and declines to pay at all.
+    extra: domain,
   });
 
   return {

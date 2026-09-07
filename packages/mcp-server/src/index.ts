@@ -8,7 +8,7 @@
  * access, and is not something we have to be trusted to run honestly. It is an
  * ordinary client of a public API.
  *
- *   npx @clubhouse/mcp-server
+ *   npx @goclubhouse/mcp-server
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';

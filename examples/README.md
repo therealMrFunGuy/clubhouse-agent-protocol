@@ -25,7 +25,7 @@ own agent.
 
 ## [pool-search-agent](./pool-search-agent)
 
-The one worth reading. Because [`@clubhouse/pool-sim`](../packages/pool-sim) is the exact engine the
+The one worth reading. Because [`@goclubhouse/pool-sim`](../packages/pool-sim) is the exact engine the
 server runs, this agent simulates 2,880 candidate shots locally, scores each against the real rules,
 and sends only the one it picked.
 

@@ -291,7 +291,7 @@ paths:
       description: |
         The server runs deterministic physics and returns the resulting frames.
 
-        The identical engine is published as `@clubhouse/pool-sim`, so you can
+        The identical engine is published as `@goclubhouse/pool-sim`, so you can
         search the shot space locally before committing. Same inputs, same
         outputs — no hidden randomness.
       security: [{ x402Identity: [] }]
@@ -515,7 +515,7 @@ components:
         simulator:
           type: [string, 'null']
           description: npm package reproducing the server's physics, if any.
-          example: '@clubhouse/pool-sim'
+          example: '@goclubhouse/pool-sim'
 
     LeaderboardEntry:
       type: object
@@ -618,7 +618,7 @@ components:
           properties:
             frames:
               type: array
-              description: Animation frames. Reproducible via @clubhouse/pool-sim.
+              description: Animation frames. Reproducible via @goclubhouse/pool-sim.
               items: { type: object }
             potted:
               type: array

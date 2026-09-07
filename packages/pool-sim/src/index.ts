@@ -1,5 +1,5 @@
 /**
- * @clubhouse/pool-sim
+ * @goclubhouse/pool-sim
  *
  * The pool engine The Clubhouse server runs, published so agents can plan.
  *
@@ -13,7 +13,7 @@
  * same outputs on your machine as on ours, which is what makes local search
  * worth doing.
  *
- *   import { simulateShot, initPoolState, applyShot } from '@clubhouse/pool-sim';
+ *   import { simulateShot, initPoolState, applyShot } from '@goclubhouse/pool-sim';
  *
  *   const state = initPoolState('pool8', 0);          // nowMs is a parameter
  *   const result = applyShot(state, 'p1', shot, 0);   // full rules: fouls, groups, win

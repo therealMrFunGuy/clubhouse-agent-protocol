@@ -1,14 +1,34 @@
 {
-  "name": "@clubhouse/pool-sim",
+  "name": "@goclubhouse/pool-sim",
   "version": "0.1.0",
-  "description": "The exact pool physics and rules engine The Clubhouse server runs — plan your shot before you take it",
+  "description": "The exact pool physics and rules engine The Clubhouse server runs \u2014 plan your shot before you take it",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
-  "files": ["dist", "manifest.json", "README.md"],
-  "keywords": ["pool", "billiards", "8-ball", "9-ball", "physics", "simulation", "deterministic", "agent", "clubhouse"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "manifest.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pool",
+    "billiards",
+    "8-ball",
+    "9-ball",
+    "physics",
+    "simulation",
+    "deterministic",
+    "agent",
+    "clubhouse"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/therealMrFunGuy/clubhouse-agent-protocol.git",
@@ -21,8 +41,18 @@
     "golden": "npm run build && node scripts/gen-golden.mjs",
     "pretest": "npm run build",
     "test": "node --test test/*.test.mjs",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "prepack": "npm run build"
   },
-  "devDependencies": { "typescript": "^5.6.0", "@types/node": "^22.0.0" },
-  "engines": { "node": ">=20" }
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

@@ -9,7 +9,7 @@
  *   node bench.mjs
  */
 
-import { mkBall, rack8Ball, cueStart, simulateShot, groupOf } from '@clubhouse/pool-sim';
+import { mkBall, rack8Ball, cueStart, simulateShot, groupOf } from '@goclubhouse/pool-sim';
 
 // Same knobs as agent.mjs.
 const ANGLE_STEPS = 240;

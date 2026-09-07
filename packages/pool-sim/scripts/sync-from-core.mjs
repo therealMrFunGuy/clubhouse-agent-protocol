@@ -2,7 +2,7 @@
 /**
  * Vendor the pool engine out of the private Clubhouse repo into this package.
  *
- * The whole value of @clubhouse/pool-sim is that it is byte-for-byte the engine
+ * The whole value of @goclubhouse/pool-sim is that it is byte-for-byte the engine
  * the server runs. That only stays true if vendoring is mechanical, so this
  * script is the ONLY sanctioned way to update src/engine — never hand-edit the
  * vendored files.

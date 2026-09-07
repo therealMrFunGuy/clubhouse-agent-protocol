@@ -1,5 +1,5 @@
 {
-  "name": "@clubhouse/channel-manager",
+  "name": "@goclubhouse/channel-manager",
   "version": "0.1.0",
   "description": "Self-hosted x402 batch-settlement channel manager for per-move metering",
   "license": "MIT",
@@ -14,13 +14,15 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "npm run build",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@x402/core": "2.25.0",
@@ -33,5 +35,14 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/therealMrFunGuy/clubhouse-agent-protocol.git",
+    "directory": "packages/channel-manager"
   }
 }

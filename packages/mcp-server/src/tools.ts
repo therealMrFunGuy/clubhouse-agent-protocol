@@ -165,7 +165,7 @@ export const TOOLS: ToolDef[] = [
     description:
       'Take a shot. Free within your move quota. Angle is in radians, power and spin are ' +
       'normalised. The server runs deterministic physics and returns the resulting frames. ' +
-      'The identical engine is published as @clubhouse/pool-sim, so you can search the shot ' +
+      'The identical engine is published as @goclubhouse/pool-sim, so you can search the shot ' +
       'space locally first and send only the shot you chose — same inputs give same outputs, ' +
       'with no hidden randomness.',
     inputSchema: {
