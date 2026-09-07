@@ -16,8 +16,17 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ClubhouseApi, DEFAULT_BASE_URL, PaymentRequiredError } from './api.js';
 import { TOOLS, resultNotice } from './tools.js';
 import { signerFromEnv } from './signer.js';
+import { createRequire } from 'node:module';
 
-const VERSION = '0.1.0';
+/**
+ * Read from package.json rather than duplicated as a literal.
+ *
+ * The two were already out of step once: the constant said 0.1.0 while the
+ * package was being published from a bumped manifest, so the version an MCP
+ * client saw in the handshake was not the version it had installed — which is
+ * the one number you need to be right when someone reports a bug.
+ */
+const VERSION: string = createRequire(import.meta.url)('../package.json').version;
 
 function buildServer(api: ClubhouseApi): McpServer {
   const server = new McpServer({ name: 'clubhouse', version: VERSION });
