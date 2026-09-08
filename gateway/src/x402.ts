@@ -37,6 +37,126 @@ export const USDC: Record<string, string> = {
 };
 
 /**
+ * Everything an agent may pay with, per network.
+ *
+ * x402 lets a 402 advertise several `accepts` and the client picks one, which
+ * is exactly the shape this needs: the agent chooses its token, the facilitator
+ * settles in it, and the settled asset decides which queue the entry joins.
+ * Pots never mix assets, so choosing the token IS choosing the opponent pool.
+ *
+ * ## Two of these need an on-chain approval first
+ *
+ * `exact` authorises a transfer one of two ways, and which applies is a
+ * property of the token. Verified on Base mainnet by calling
+ * `authorizationState(address,bytes32)` on each contract, 2026-09-08:
+ *
+ *   USDC  EIP-3009 present  → a signature is enough
+ *   WETH  absent            → Permit2
+ *   CRED  absent (reverts)  → Permit2
+ *
+ * Permit2 works with any ERC-20, but the payer must `approve(Permit2)` once,
+ * on-chain, per token. For a machine that expects to pay by signature alone
+ * that is a real barrier, which is why USDC is listed first and stays the
+ * cheapest way in.
+ *
+ * NATIVE ETH IS NOT HERE AND CANNOT BE. `exact` signs an ERC-20 authorisation;
+ * native ETH is not an ERC-20 and has no such function. "ETH" means WETH.
+ */
+export interface PayableAsset {
+  symbol: string;
+  address: string;
+  decimals: number;
+  /** EIP-712 domain the token actually reports. Wrong values are unsignable. */
+  domain: { name: string; version: string };
+  /** Decimal string, e.g. "0.5". */
+  seatPrice: string;
+  tournamentPrice: string;
+  /** Permit2 needs a one-time on-chain approval; EIP-3009 does not. */
+  needsApproval: boolean;
+  /**
+   * Whether a 402 actually offers this asset.
+   *
+   * OFF for the permit2 assets, and this is the honest part. Advertising a
+   * price is a promise it can be paid, and we have not been able to establish
+   * that any facilitator will settle a permit2 `exact` payment: probed
+   * 2026-09-08, payai answers `invalid_payload`, daydreams requires auth,
+   * heurist wants a v2 `accepted` field and xpay 500s — every one of them
+   * rejects a synthetic payload before revealing whether the method is
+   * supported, and eip3009 and permit2 produce IDENTICAL errors. Settling that
+   * question needs a real signature over a real approval.
+   *
+   * Until then an agent choosing WETH would sign, retry, and be refused for a
+   * reason it cannot act on. This gateway has shipped an unpayable 402 once
+   * before, by omitting the EIP-712 domain; it is not doing it again on
+   * purpose.
+   *
+   * The origin is already fully multi-asset — segregated queues, per-asset
+   * decimals, prices and claim fees. Flipping these to true is the last step,
+   * and it should follow a settled permit2 payment on Sepolia, not precede it.
+   */
+  enabled: boolean;
+}
+
+export const PAYABLE_ASSETS: Record<string, PayableAsset[]> = {
+  [NETWORK.baseMainnet]: [
+    {
+      symbol: 'USDC',
+      address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      decimals: 6,
+      domain: { name: 'USD Coin', version: '2' },
+      seatPrice: '0.50',
+      tournamentPrice: '5.00',
+      needsApproval: false,
+      enabled: true,
+    },
+    {
+      symbol: 'WETH',
+      address: '0x4200000000000000000000000000000000000006',
+      decimals: 18,
+      domain: { name: 'Wrapped Ether', version: '1' },
+      seatPrice: '0.00001',
+      tournamentPrice: '0.0001',
+      needsApproval: true,
+      enabled: false,
+    },
+    {
+      symbol: 'CRED',
+      address: '0xFD1c03e25D061B0A810F129fb0C479f0A56942C6',
+      decimals: 18,
+      domain: { name: 'CRED', version: '1' },
+      seatPrice: '10',
+      tournamentPrice: '100',
+      needsApproval: true,
+      enabled: false,
+    },
+  ],
+  [NETWORK.polygonMainnet]: [
+    {
+      symbol: 'USDC',
+      address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+      decimals: 6,
+      domain: { name: 'USD Coin', version: '2' },
+      seatPrice: '0.50',
+      tournamentPrice: '5.00',
+      needsApproval: false,
+      enabled: true,
+    },
+  ],
+  [NETWORK.baseSepolia]: [
+    {
+      symbol: 'USDC',
+      address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      decimals: 6,
+      domain: { name: 'USDC', version: '2' },
+      seatPrice: '0.50',
+      tournamentPrice: '5.00',
+      needsApproval: false,
+      enabled: true,
+    },
+  ],
+};
+
+/**
  * The asset's EIP-712 domain, which the 402 challenge MUST carry.
  *
  * The `exact` scheme pays by signing an EIP-3009 `TransferWithAuthorization`,
@@ -68,8 +188,8 @@ export const ASSET_EIP712: Record<string, { name: string; version: string }> = {
  * facilitator as swappable, so an outage at one is a config change, not an
  * incident.
  *
- * NOTE: `batch-settlement` is NOT offered by any of these on mainnet. Per-move
- * metering is therefore deferred; see README "Pricing".
+ * NOTE: none of these offers `batch-settlement` on mainnet, which is why we run
+ * our own facilitator for per-move metering — see docs/payment-channels.md.
  */
 export const MAINNET_FACILITATORS = [
   'https://facilitator.payai.network',
@@ -84,13 +204,32 @@ export const MAINNET_FACILITATORS = [
  */
 export const TESTNET_FACILITATOR = 'https://x402.org/facilitator';
 
-/** USDC base units (6dp) from a decimal string. Never uses floating point. */
-export function usdc(amount: string): string {
+/**
+ * Base units from a decimal string, at the asset's own precision.
+ *
+ * Never floating point. `Math.round(Number(x) * 10 ** d)` is the obvious version
+ * and it is how a decimals bug reaches production; at 18 decimals it is not even
+ * close, because 10^18 exceeds the safe integer range outright.
+ *
+ * The decimals are a PARAMETER because they are a property of the token. This
+ * was previously hardcoded to 6, which is right for USDC and wrong by a factor
+ * of a trillion for WETH and CRED.
+ */
+export function baseUnits(amount: string, decimals: number): string {
   const [whole, frac = ''] = amount.split('.');
   if (!/^\d+$/.test(whole) || (frac && !/^\d+$/.test(frac))) {
-    throw new Error(`Invalid USDC amount: ${amount}`);
+    throw new Error(`Invalid amount: ${amount}`);
   }
-  return `${whole}${frac.padEnd(6, '0').slice(0, 6)}`.replace(/^0+(?=\d)/, '');
+  if (frac.length > decimals) {
+    // Silently truncating would under-price the route by whatever was dropped.
+    throw new Error(`${amount} has more than ${decimals} decimal places`);
+  }
+  return `${whole}${frac.padEnd(decimals, '0')}`.replace(/^0+(?=\d)/, '');
+}
+
+/** USDC (6dp), kept for callers that mean USDC specifically. */
+export function usdc(amount: string): string {
+  return baseUnits(amount, 6);
 }
 
 /**
@@ -108,23 +247,43 @@ export function buildRoutes(env: Env) {
   const domain = ASSET_EIP712[network];
   if (!domain) throw new Error(`No EIP-712 domain configured for ${network}`);
 
-  const option = (price: string) => ({
-    scheme: 'exact',
-    network,
-    payTo,
-    price: { amount: usdc(price), asset },
-    maxTimeoutSeconds: 120,
-    // Carried into the challenge's `extra`. Without this the client cannot
-    // build the EIP-3009 signature and declines to pay at all.
-    extra: domain,
-  });
+  const payable = (PAYABLE_ASSETS[network] ?? []).filter((a) => a.enabled);
+  if (!payable.length) throw new Error(`No payable assets enabled for ${network}`);
+
+  /**
+   * One `accepts` entry per asset. The client picks; the settled asset decides
+   * which queue the entry joins, because pots never mix assets.
+   *
+   * `extra` carries the token's own EIP-712 domain, which the challenge MUST
+   * have — a client with the wrong name or version produces a signature the
+   * token rejects, and this gateway has already shipped a 402 that no real
+   * client could pay by omitting it entirely.
+   */
+  const options = (pick: (a: PayableAsset) => string) =>
+    payable.map((a) => ({
+      scheme: 'exact',
+      network,
+      payTo,
+      price: { amount: baseUnits(pick(a), a.decimals), asset: a.address },
+      maxTimeoutSeconds: 120,
+      // How the payer authorises the transfer. A property of the TOKEN: USDC
+      // has EIP-3009, WETH and CRED do not (verified on-chain — neither has a
+      // DOMAIN_SEPARATOR at all), so those must go through Permit2, whose
+      // domain the library builds itself from the canonical collector address.
+      assetTransferMethod: a.needsApproval ? 'permit2' : 'eip3009',
+      // Only meaningful for EIP-3009, where the signature is over the token's
+      // own domain. Read from the contract, never guessed: Base USDC reports
+      // "USD Coin"/"2", and "USDC" — the obvious guess — produces a signature
+      // the token rejects.
+      extra: a.needsApproval ? undefined : a.domain,
+    }));
 
   return {
     'POST /v1/matchmaking/queue': {
       resource: 'https://agents.goclubhouse.io/v1/matchmaking/queue',
       description: 'Ranked seat on the Clubhouse agent ladder',
       mimeType: 'application/json',
-      accepts: [option(env.PRICE_RANKED_SEAT ?? '1.00')],
+      accepts: options((a) => a.seatPrice),
     },
     'POST /v1/tournaments/*/join': {
       resource: 'https://agents.goclubhouse.io/v1/tournaments/join',
@@ -133,7 +292,7 @@ export function buildRoutes(env: Env) {
       // MUST equal the origin's AGENT_PRICE_TOURNAMENT_BASE. That check is an
       // equality, not a floor, so a disagreement refuses every real payment —
       // the correct failure for a price that has drifted on a money route.
-      accepts: [option(env.PRICE_TOURNAMENT_ENTRY ?? '5.00')],
+      accepts: options((a) => a.tournamentPrice),
     },
   };
 }
