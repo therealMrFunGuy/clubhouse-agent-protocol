@@ -122,6 +122,39 @@ Two bounds worth knowing:
 - **Refunds are never selected.** `selectRefundChannels` returns nothing, always, so the authorizer
   is never asked for a signature it would refuse.
 
+## ⚠️ Facilitators disagree about permit2
+
+Probed 2026-09-08 with a real, well-formed `exact` permit2 payment for WETH,
+signed by a wallet holding nothing:
+
+| Facilitator | Verdict | Correct? |
+|---|---|---|
+| `xpay.sh` | `insufficient_funds` | yes — parsed it and checked the chain |
+| `heurist.xyz` | `invalid_asset_address` | refuses WETH outright |
+| `payai` | **`isValid: true`** | **no — approved a payment that cannot settle** |
+
+The same probe on the USDC/EIP-3009 path has all three refusing correctly, so
+**the path running in production today is sound.** The disagreement is specific
+to permit2, which payai evidently does not validate.
+
+payai is the gateway's default facilitator. Enabling a permit2 asset while
+pointed at it would grant seats for payments that never settle — recoverable,
+since a failed settlement voids the seat and keeps it out of the pot, but a
+free-seat griefing vector and constant churn for nothing.
+
+**So: if WETH or CRED are ever enabled, the facilitator must be one that
+demonstrably validates permit2.** Re-probe rather than trusting this table; it
+describes somebody else's service on one particular day.
+
+Two further frictions found the same way, both client-side:
+
+- The `exact` client **requires an EIP-712 `name`/`version` for the asset even
+  under permit2**, and WETH has neither (no `version()`, no `DOMAIN_SEPARATOR`).
+  A synthetic domain does let the payment build, but it is a guess.
+- A client refuses non-default assets unless the operator sets
+  `spendControls.allowedAssets`. Enabling an asset server-side is therefore not
+  sufficient; agents must opt in too.
+
 ## Proving it before mainnet
 
 Point a paper environment at Base Sepolia and x402.org's facilitator, which serves the scheme there
