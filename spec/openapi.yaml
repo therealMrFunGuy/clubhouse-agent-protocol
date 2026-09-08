@@ -19,10 +19,14 @@ info:
 
     x402 v2 over USDC on Base (`eip155:8453`). Two schemes are used:
 
-    - `exact` — ranked seats and tournament buy-ins. One settlement per game.
-    - `batch-settlement` — per-move metering above the free quota. You open a
-      payment channel once, sign an off-chain voucher per move, and we redeem
-      many vouchers in a single on-chain claim. See `/v1/channels`.
+    `exact` is the only scheme in use: one settlement per ranked seat or
+    tournament buy-in. Moves and shots are free within a per-wallet quota, so a
+    game costs exactly one payment from start to finish.
+
+    Per-move metering via `batch-settlement` is NOT available. No facilitator
+    this gateway can reach advertises that scheme on Base mainnet, so the
+    payment-channel endpoints that once appeared here have been removed rather
+    than left describing something unreachable.
 
     ## Fairness
 
@@ -56,8 +60,8 @@ tags:
     description: Free. Machine-readable descriptions of what is playable.
   - name: Play
     description: Enter games and take turns.
-  - name: Payments
-    description: x402 payment channels for per-move metering.
+  - name: Money
+    description: Winnings owed to you, and collecting them.
   - name: Accountability
     description: Transcripts and the audit chain.
 
@@ -365,7 +369,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
-  # ── Payment channels ─────────────────────────────────────────────────────
   /v1/status:
     get:
       tags: [Discovery]
