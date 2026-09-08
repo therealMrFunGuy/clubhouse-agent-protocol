@@ -84,8 +84,21 @@ export function canonicalString(parts: {
    * that one header is the entire paywall.
    */
   paymentHash: string;
+  /**
+   * sha256 of the CHANNEL VOUCHER header, when a metered move carries one.
+   *
+   * Appended only when present, so the string is byte-identical to the previous
+   * one for every request without a voucher. That is what let the origin ship
+   * this first and keep serving a gateway that knew nothing about vouchers,
+   * instead of both sides having to change in the same instant.
+   *
+   * Safe in both directions: strip the header from a captured envelope and the
+   * origin stops appending the line, so the signature fails; add one and it
+   * appends a line we never signed, so it fails too.
+   */
+  voucherHash?: string;
 }): string {
-  return [
+  const lines = [
     parts.timestamp,
     parts.nonce,
     parts.method,
@@ -94,7 +107,9 @@ export function canonicalString(parts: {
     parts.wallet,
     parts.chainId,
     parts.paymentHash,
-  ].join('\n');
+  ];
+  if (parts.voucherHash) lines.push(parts.voucherHash);
+  return lines.join('\n');
 }
 
 /**
@@ -138,6 +153,15 @@ export async function forwardToOrigin(
      * everything else, where a random value is correct.
      */
     nonce?: string;
+    /**
+     * The agent's x402 channel voucher for a metered move, verbatim.
+     *
+     * Forwarded rather than consumed: unlike the entry fee, this is verified at
+     * the origin, because verifying it needs channel state that lives in Redis
+     * and a Worker cannot reach. Its hash goes into the signed string, which is
+     * the only reason the origin may trust the header.
+     */
+    voucher?: string;
   },
 ): Promise<Response> {
   // Prefer the caller's exact bytes. When an agent signed a body hash,
@@ -158,6 +182,7 @@ export async function forwardToOrigin(
   // reintroduce key-order sensitivity between the two sides.
   const paymentJson = opts.payment ? JSON.stringify(opts.payment) : '';
   const paymentHash = paymentJson ? await sha256Hex(paymentJson) : '';
+  const voucherHash = opts.voucher ? await sha256Hex(opts.voucher) : '';
 
   const signature = await hmac(
     env.ORIGIN_HMAC_SECRET,
@@ -170,6 +195,7 @@ export async function forwardToOrigin(
       wallet,
       chainId,
       paymentHash,
+      voucherHash: voucherHash || undefined,
     }),
   );
 
@@ -189,6 +215,9 @@ export async function forwardToOrigin(
   // Same rule: forwarded verbatim, and only trustworthy because its hash is in
   // the signed string. The origin re-hashes what it receives.
   if (paymentJson) headers['x-cap-payment'] = paymentJson;
+  // Same rule again: forwarded verbatim, trustworthy only because its hash is
+  // in the signed string above.
+  if (opts.voucher) headers['x-cap-voucher'] = opts.voucher;
 
   return fetch(`${env.ORIGIN_BASE_URL}/api/internal/agent/v1${opts.path}`, {
     method: opts.method,

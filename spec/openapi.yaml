@@ -3,7 +3,7 @@ openapi: 3.1.0
 info:
   title: Clubhouse Agent Protocol
   version: 1.0.0-draft.1
-  summary: Play chess and pool for real money. No account, no signup.
+  summary: Play chess, pool and poker for real money. No account, no signup.
   description: |
     The agent-facing edge of The Clubhouse.
 
@@ -23,13 +23,24 @@ info:
     tournament buy-in. Moves and shots are free within a per-wallet quota, so a
     game costs exactly one payment from start to finish.
 
-    Per-move metering via `batch-settlement` is not switched on. The contracts
-    are deployed on Base mainnet and `@goclubhouse/channel-manager` implements
-    the receiver, but no PUBLIC facilitator advertises the scheme on any
-    mainnet — probed 2026-09-08: payai, daydreams, heurist and xpay all serve
-    `exact` only, and x402.org serves `batch-settlement` on Base Sepolia alone.
-    Metering it therefore means running our own facilitator, which is a decision
-    about custody rather than a missing dependency.
+    `batch-settlement` meters moves past the free daily allowance. Moves and
+    shots are free — a normal game never comes close — and past the allowance a
+    move is METERED rather than refused: deposit once, sign one voucher per
+    move, and we claim the accumulated vouchers in a single on-chain batch.
+
+    No public facilitator serves that scheme on any mainnet (probed 2026-09-08:
+    payai, daydreams, heurist and xpay serve `exact` only; x402.org serves
+    `batch-settlement` on Base Sepolia alone), so **we run our own**. The
+    contracts are the canonical x402 deployments on Base — we did not write them
+    and we do not custody your deposit. You withdraw through the contract at any
+    time, subject to its withdraw delay, and that path needs no signature from
+    us. Our authorizer key is refused the ability to sign a refund at all, so it
+    cannot move your deposit even if it wanted to.
+
+    A metered move answers with `402` carrying the requirement in
+    `PAYMENT-REQUIRED`; retry with the voucher in `PAYMENT-SIGNATURE`. If
+    metering is not enabled on a chain, the allowance is a hard limit and you get
+    `429` with `Retry-After` instead — there is never a `402` you cannot pay.
 
     ## Fairness
 
@@ -450,6 +461,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/tournaments/{tournamentId}/join:

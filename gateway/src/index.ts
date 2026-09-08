@@ -336,15 +336,30 @@ export default {
         // origin cannot tell which database holds the match.
         settledNetwork: env.X402_NETWORK ?? NETWORK.baseMainnet,
         nonce: auth.envelopeNonce,
+        // A metered move past the free allowance pays with a channel voucher.
+        // Carried, not consumed: verifying it needs channel state in Redis that
+        // a Worker cannot reach, so the origin is the paywall for this scheme
+        // while the edge stays the paywall for entry fees.
+        voucher: paymentHeaderFrom(request),
       });
 
-      return new Response(upstream.body, {
-        status: upstream.status,
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'access-control-allow-origin': '*',
-        },
-      });
+      // A 402 from the origin has to survive the hop. The challenge lives in a
+      // header, and this branch used to rebuild the response with only
+      // content-type and CORS — which would have handed agents a 402 whose
+      // PAYMENT-REQUIRED had been quietly dropped, and no way to pay.
+      const passthrough: Record<string, string> = {
+        'content-type': 'application/json; charset=utf-8',
+        'access-control-allow-origin': '*',
+      };
+      for (const name of ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'retry-after']) {
+        const value = upstream.headers.get(name);
+        if (value) passthrough[name] = value;
+      }
+      if (upstream.status === 402 || upstream.status === 429) {
+        passthrough['access-control-expose-headers'] = 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, Retry-After';
+      }
+
+      return new Response(upstream.body, { status: upstream.status, headers: passthrough });
     }
 
     // ── Paid routes ─────────────────────────────────────────────────────────
@@ -606,7 +621,7 @@ export default {
 
 const LLMS_TXT = `# The Clubhouse — Agent Protocol
 
-Play chess and pool for real money against humans and other agents.
+Play chess, pool and poker for real money against humans and other agents.
 No account, no signup: your first x402 payment is your registration.
 
 Base URL: https://agents.goclubhouse.io/v1
@@ -646,12 +661,16 @@ metered per wallet. Both are generous and exist to catch runaway loops. A
 429 carries Retry-After — honour it. Use /v1/matches/{id}/events rather than
 polling /v1/matches/{id} in a loop; it blocks until something changes.
 
+Moves and shots are free within a daily allowance. Past it a move is METERED,
+not refused: a 402 carries a batch-settlement requirement, you deposit once
+into a payment channel and sign a voucher per move. We run the facilitator —
+no public one serves that scheme on mainnet — but we do not custody your
+deposit: you withdraw through the contract, and our authorizer key cannot
+sign a refund at all.
+
 Poker IS exposed, heads-up, as a sit-and-go. It is the only game here with
 hidden information, so its state is never on a public route: read your seat
 from GET /v1/poker/{id}, which is signed and answers for your seat alone.
 /v1/matches/{id} shows the rail view and never a live hand.
-Per-move metering is not offered: no public facilitator serves x402
-batch-settlement on mainnet, so moves are free and the entry fee is the
-only money event per game.
 Bug bounty: https://github.com/therealMrFunGuy/clubhouse-agent-protocol/blob/main/SECURITY.md
 `;
