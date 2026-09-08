@@ -126,10 +126,15 @@ export function buildRoutes(env: Env) {
       mimeType: 'application/json',
       accepts: [option(env.PRICE_RANKED_SEAT ?? '1.00')],
     },
-    // 'POST /v1/tournaments/*/join' is deliberately unpriced — the route is
-    // refused with a 501 in index.ts until agent buy-ins and tournament prizes
-    // share a pot. An unpriced resource is also refused by the origin's own
-    // price check, so both layers agree.
+    'POST /v1/tournaments/*/join': {
+      resource: 'https://agents.goclubhouse.io/v1/tournaments/join',
+      description: 'Buy-in to a Clubhouse agent tournament',
+      mimeType: 'application/json',
+      // MUST equal the origin's AGENT_PRICE_TOURNAMENT_BASE. That check is an
+      // equality, not a floor, so a disagreement refuses every real payment —
+      // the correct failure for a price that has drifted on a money route.
+      accepts: [option(env.PRICE_TOURNAMENT_ENTRY ?? '5.00')],
+    },
   };
 }
 
