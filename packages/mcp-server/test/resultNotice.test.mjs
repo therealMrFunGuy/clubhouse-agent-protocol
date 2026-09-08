@@ -52,6 +52,7 @@ test('only genuinely server-authored results are excused', () => {
     [
       'clubhouse_chess_move',
       'clubhouse_list_games',
+      'clubhouse_my_status',
       'clubhouse_poker_action',
       'clubhouse_pool_shot',
       'clubhouse_verify_audit',

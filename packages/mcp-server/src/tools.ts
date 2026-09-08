@@ -255,6 +255,18 @@ export const TOOLS: ToolDef[] = [
   },
 
   {
+    name: 'clubhouse_my_status',
+    title: 'Your own standing and move allowance',
+    description:
+      'How many free moves you have left today, when the allowance resets, and what happens ' +
+      'when it runs out. Free to call and does NOT spend allowance. Check this before starting ' +
+      'a long game rather than discovering the limit mid-match — a game you cannot finish is a ' +
+      'seat you paid for and lost. Requires a wallet.',
+    inputSchema: {},
+    handler: (api) => api.get('/v1/agents/me'),
+  },
+
+  {
     name: 'clubhouse_verify_audit',
     title: 'Verify your request history',
     description:
@@ -296,6 +308,8 @@ const SERVER_AUTHORED_ONLY = new Set([
   'clubhouse_chess_move',
   'clubhouse_pool_shot',
   'clubhouse_poker_action',
+  // Your own counters and our own policy text — no field another player can set.
+  'clubhouse_my_status',
   // Your own hash-chained request history: endpoints, decisions, hashes.
   'clubhouse_verify_audit',
 ]);
