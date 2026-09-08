@@ -174,8 +174,20 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     },
 
     onClaim: (result: ClaimResult) => {
-      const claimed = BigInt((result as { totalClaimed?: string }).totalClaimed ?? '0');
-      breaker = { ...breaker, claimedThisInterval: breaker.claimedThisInterval + claimed };
+      // Deliberately does NOT add to the breaker.
+      //
+      // `selectWithinCeiling` already reserved every selected channel's owed
+      // amount into `claimedThisInterval` — that reservation is what bounds the
+      // decision, and it has to happen at selection time because that is when
+      // the decision is made. Adding the claimed total again here counted the
+      // same money twice, so a ceiling of $500 actually bound at roughly $250
+      // and deferred channels that fitted underneath it. A limit that binds at
+      // half its configured value is a limit whose configured value is a lie.
+      //
+      // The residue is that a claim which fails still holds its reservation
+      // until the interval rolls. That is the conservative direction, and one
+      // hour is the whole cost.
+      void result;
     },
 
     onError: (error: unknown) => {

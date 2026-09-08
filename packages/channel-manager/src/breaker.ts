@@ -79,7 +79,13 @@ export function selectWithinCeiling<T extends ClaimCandidate>(
     };
   }
 
-  const ordered = [...claimable].sort((a, b) => (owedBy(b) > owedBy(a) ? 1 : -1));
+  // Never returns 0 for equal amounts if written as a bare ternary, which makes
+  // the comparator inconsistent — compare(a,b) and compare(b,a) both say "a
+  // first" — and leaves the order among equal debts up to the sort's internals.
+  const ordered = [...claimable].sort((a, b) => {
+    const [x, y] = [owedBy(a), owedBy(b)];
+    return x === y ? 0 : y > x ? 1 : -1;
+  });
 
   const selected: T[] = [];
   const deferred: T[] = [];

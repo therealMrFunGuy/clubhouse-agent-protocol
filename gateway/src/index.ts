@@ -100,6 +100,47 @@ const PUBLIC_READS = [
   '/v1/stats',
 ];
 
+/**
+ * Tell the origin whether a verified payment actually settled.
+ *
+ * x402 verifies and settles in two calls, and this gateway deliberately puts
+ * the origin hop between them so a refused seat never charges anybody. The cost
+ * of that ordering is this window: the seat is already granted when the
+ * transfer is submitted, and the transfer can fail — the payer moves their
+ * balance, the authorisation is spent elsewhere, the facilitator is down.
+ *
+ * Reporting the outcome is what keeps the origin's ledger honest, because until
+ * it hears from us the payment is `verified` and counts toward no pot.
+ *
+ * Never throws. A failed report leaves the payment excluded, which underpays a
+ * winner — bad, and visible in the origin's logs — rather than paying one out
+ * of money that never arrived, which is neither recoverable nor visible.
+ */
+async function reportSettlement(
+  env: Env,
+  outcome: { nonce: string; outcome: 'settled' | 'failed'; txHash?: string | null; reason?: string },
+): Promise<void> {
+  try {
+    const res = await forwardToOrigin(env, {
+      method: 'POST',
+      path: '/payments/settlement',
+      body: outcome,
+      // ANON deliberately. This is the gateway talking to the origin, not the
+      // agent — attributing it to the payer would spend that agent's quota on
+      // our bookkeeping and, worse, let a rate-limited agent's 429 leave its own
+      // payment stuck as `verified` and excluded from the pot it just funded.
+      identity: ANON,
+    });
+    if (!res.ok) {
+      console.error(
+        `[gateway] origin refused settlement report for ${outcome.nonce}: HTTP ${res.status}`,
+      );
+    }
+  } catch (e) {
+    console.error(`[gateway] could not report settlement for ${outcome.nonce}:`, e);
+  }
+}
+
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
@@ -465,15 +506,41 @@ export default {
           );
           if (settled?.success) {
             settleHeaders = settled.headers ?? {};
+            // Tell the origin the money actually moved. Until it hears this the
+            // payment sits as `verified` and is EXCLUDED from the pot, so a
+            // dropped report underpays a winner rather than overpaying one.
+            await reportSettlement(env, {
+              nonce: settlementNonce,
+              outcome: 'settled',
+              txHash: settled.transaction ?? settled.txHash ?? null,
+            });
           } else {
             // The agent holds a seat it has not paid for. Better than the
             // inverse, and loud so it cannot pass unnoticed.
             console.error(
               `[gateway] SETTLEMENT FAILED after a granted seat — payer ${payer}, nonce ${settlementNonce}: ${settled?.errorReason ?? 'unknown'}`,
             );
+            // And, crucially, say so. Logging alone left the origin counting a
+            // dollar that never arrived into the pot a winner is paid from —
+            // verify proves a payer CAN pay, and the balance can move before
+            // settle broadcasts. This is what makes that gap cost nothing.
+            await reportSettlement(env, {
+              nonce: settlementNonce,
+              outcome: 'failed',
+              reason: String(settled?.errorReason ?? 'settlement returned failure'),
+            });
           }
         } catch (e) {
           console.error(`[gateway] settlement threw for payer ${payer}:`, e);
+          // A throw is not evidence the transfer did not happen — it may have
+          // been broadcast and the response lost. Report it as failed anyway:
+          // excluding a payment we cannot confirm underpays a winner, while
+          // including one we cannot confirm pays out money that may not exist.
+          await reportSettlement(env, {
+            nonce: settlementNonce,
+            outcome: 'failed',
+            reason: `settlement threw: ${e instanceof Error ? e.message : String(e)}`,
+          });
         }
       }
 
