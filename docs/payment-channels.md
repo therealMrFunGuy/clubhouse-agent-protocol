@@ -35,7 +35,13 @@ the vouchers are already taken.
 |---|---|---|---|
 | **Submitter** | gas on Base | nothing off-chain; broadcasts what it is handed | `AGENT_CHANNEL_SUBMITTER_KEY` |
 | **Authorizer** | nothing | `ClaimBatch` only | `AGENT_CHANNEL_AUTHORIZER_KEY`, or a signing service |
-| **Receiver** | the agent pot | nothing | `AGENT_POT_ADDRESS` |
+| **Receiver** | the agent pot | nothing *in this scheme* | `AGENT_POT_ADDRESS` |
+
+The receiver is never asked for a signature by the batch-settlement contract — only the authorizer
+is. On this platform the pot is also the wallet winners are paid from, so its key does sign
+elsewhere; that is deliberate, because a pot nobody can pay out of is the one failure you cannot
+undo. It does mean claimed channel funds land in a hot wallet, which is the same exposure entry fees
+already have.
 
 **None of them may be the platform's payout key.** That key already signs prize transfers for every
 chain from inside the web process; giving it a second job in a component facing unbounded agent
