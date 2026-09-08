@@ -7,6 +7,7 @@
  */
 
 import { neutraliseResponse, neutralise } from './untrusted.js';
+import type { AgentSigner } from './signer.js';
 
 export const DEFAULT_BASE_URL = 'https://agents.goclubhouse.io';
 
@@ -14,6 +15,14 @@ export interface ApiConfig {
   baseUrl?: string;
   /** Bounds a hung request; the gateway's own long-poll maximum is 30s. */
   timeoutMs?: number;
+  /**
+   * Proves which wallet is calling, for anything that acts as somebody.
+   *
+   * Optional: reads and discovery need no identity, so an operator who only
+   * wants to browse should not have to hold a wallet. Absent, the play tools
+   * fail with a 401 the caller can explain rather than a silent nothing.
+   */
+  signer?: AgentSigner | null;
 }
 
 export class PaymentRequiredError extends Error {
@@ -30,10 +39,17 @@ export class PaymentRequiredError extends Error {
 export class ClubhouseApi {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly signer: AgentSigner | null;
 
   constructor(config: ApiConfig = {}) {
     this.baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.timeoutMs = config.timeoutMs ?? 35_000;
+    this.signer = config.signer ?? null;
+  }
+
+  /** The wallet this client plays as, or null when only browsing. */
+  get address(): string | null {
+    return this.signer?.address ?? null;
   }
 
   async request<T>(
@@ -49,10 +65,19 @@ export class ClubhouseApi {
       if (opts.body !== undefined) headers['content-type'] = 'application/json';
       if (opts.paymentHeader) headers['PAYMENT-SIGNATURE'] = opts.paymentHeader;
 
+      // Sign the EXACT bytes that go on the wire, and the path WITH its query.
+      // Serialising once and reusing it matters: signing a re-serialisation
+      // would cover different bytes than the server hashes, and every request
+      // would fail verification for a reason that looks like a bad key.
+      const wire = opts.body === undefined ? '' : JSON.stringify(opts.body);
+      if (this.signer) {
+        Object.assign(headers, await this.signer.headersFor(method, path, wire));
+      }
+
       const res = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers,
-        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        body: opts.body === undefined ? undefined : wire,
         signal: controller.signal,
       });
 

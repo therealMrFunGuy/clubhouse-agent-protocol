@@ -10,7 +10,14 @@
  * before any money route goes live.
  */
 
-import { getPaymentServer, adapterFor, paymentHeaderFrom, NETWORK } from './x402';
+import {
+  getPaymentServer,
+  adapterFor,
+  paymentHeaderFrom,
+  declaredX402Version,
+  SUPPORTED_X402_VERSION,
+  NETWORK,
+} from './x402';
 import { forwardToOrigin, chainIdForNetwork } from './origin';
 import { verifyAgentSignature } from './agentAuth';
 import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
@@ -28,6 +35,14 @@ const ANON: AgentIdentity = { wallet: null, keyId: null, tier: 'anon' };
 const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/v1\/chess\/\d+$/ },
   { method: 'POST', pattern: /^\/v1\/chess\/\d+\/move$/ },
+  // Pool shots, on the same terms as chess moves: free, because metering the
+  // one action a seated agent cannot decline to take would tax it for playing
+  // the game it already paid to enter.
+  { method: 'POST', pattern: /^\/v1\/pool\/\d+\/shot$/ },
+  // Declaring who runs this agent. Signed because it writes to YOUR identity —
+  // an unsigned version would let anyone set another agent's operator contact
+  // and have it refused from pairing with its own fleet.
+  { method: 'POST', pattern: /^\/v1\/agents\/me$/ },
   // Your own audit chain. Signed because it is yours — the origin checks that
   // the signer matches the wallet in the path.
   { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
@@ -63,6 +78,8 @@ function isSignedRoute(method: string, path: string): boolean {
 // than none, because it produces confident green runs.
 const PAID_ROUTES: RegExp[] = [
   /^\/v1\/matchmaking\/queue$/,
+  // Priced again: agent buy-ins and agent tournament prizes now share the same
+  // pot, so a bought seat is one the house can actually pay out on.
   /^\/v1\/tournaments\/[^/]+\/join$/,
 ];
 
@@ -125,6 +142,21 @@ export default {
       return new Response(LLMS_TXT, {
         headers: { 'content-type': 'text/plain; charset=utf-8' },
       });
+    }
+
+    // The OpenAPI spec. llms.txt names this URL, the README names it, and any
+    // registry listing points at it — and it returned 404, so the first
+    // concrete thing a curious agent fetched was a dead link.
+    //
+    // Redirected to the source of truth in the public repo rather than vendored
+    // into the Worker bundle: a copy here would drift from spec/openapi.yaml the
+    // first time someone edited one and not the other, and a spec that
+    // disagrees with itself is worse than one that lives in a single place.
+    if (path === '/spec/openapi.yaml' || path === '/spec/openapi.yml') {
+      return Response.redirect(
+        'https://raw.githubusercontent.com/therealMrFunGuy/clubhouse-agent-protocol/main/spec/openapi.yaml',
+        302,
+      );
     }
 
     if (path === '/.well-known/x402') {
@@ -297,6 +329,27 @@ export default {
         return json({ error: 'Unknown endpoint' }, 404);
       }
 
+      // ── Refuse anything but v2, BEFORE the library matches requirements ──
+      //
+      // processHTTPRequest is what runs the version switch, and v1's branch
+      // checks only scheme and network — so a v1 payload gets to declare its
+      // own `amount` and `asset`. See declaredX402Version for the full reason.
+      // Checked here rather than after, because "after" is too late: the weak
+      // match has already chosen the requirement by then.
+      const declaredVersion = declaredX402Version(ctx.paymentHeader);
+      if (declaredVersion !== null && declaredVersion !== SUPPORTED_X402_VERSION) {
+        console.warn(
+          `[gateway] refused payment declaring x402Version ${declaredVersion} on ${path}`,
+        );
+        return json(
+          {
+            error: `Unsupported x402 version — this gateway requires v${SUPPORTED_X402_VERSION}`,
+            x402Version: SUPPORTED_X402_VERSION,
+          },
+          400,
+        );
+      }
+
       const result = (await server.processHTTPRequest(ctx as never)) as
         | { type: 'no-payment-required' }
         | { type: 'payment-error'; response?: { status: number; headers: Record<string, string>; body: unknown } }
@@ -335,17 +388,41 @@ export default {
       const payer: string | null = auth.from ?? null;
       const settlementNonce: string | null = auth.nonce ?? null;
 
-      // The terms live on `accepted` inside the payload, and ALSO come back as
-      // a sibling `paymentRequirements`. Read both, because taking only the
-      // sibling produced amount '0' — which the origin's price check correctly
-      // refused as underpaid, on a payment that was in fact for the full $1.
-      // `network` and `scheme` are NOT top-level on the payload at all.
-      const accepted = payload.accepted ?? (result as any).paymentRequirements ?? {};
-      const network = accepted.network ?? env.X402_NETWORK ?? NETWORK.baseMainnet;
+      // ── The terms. SERVER-side only ─────────────────────────────────────
+      //
+      // `paymentRequirements` is `matchingRequirements` — the requirement this
+      // gateway advertised and the facilitator actually verified and settled
+      // against. `paymentPayload.accepted` is the CLIENT's echo of it.
+      //
+      // This used to prefer the echo, because reading the sibling once produced
+      // `amount: '0'` and the origin correctly refused a real $1 payment as
+      // underpaid. That was a different bug; the live 402 carries
+      // `amount: "1000000"` on the requirement. The workaround outlived the
+      // problem and became the hole: the echo is client input, and under a
+      // declared v1 the library never checks it, so a caller could pay $1 and
+      // declare $250. That figure is what the origin signs into a receipt,
+      // stores, and SUMS into the pot a winner is paid from.
+      //
+      // So: never fall back to the payload for a money field. A missing field
+      // here is a version skew with the library worth failing loudly on, not
+      // something to paper over with a default — defaulting is precisely how
+      // the '0' went unnoticed.
+      const requirements = (result as any).paymentRequirements ?? {};
+      const network = requirements.network;
+      const asset = requirements.asset;
+      const amount = requirements.amount;
 
       if (!payer || !settlementNonce) {
         console.error('[gateway] verified payment lacked payer or nonce — refusing');
         return json({ error: 'Payment could not be attributed' }, 502);
+      }
+
+      if (!network || !asset || typeof amount !== 'string' || !/^\d+$/.test(amount)) {
+        console.error(
+          '[gateway] verified payment carried no usable server-side terms — refusing. ' +
+            `network=${network} asset=${asset} amount=${amount}`,
+        );
+        return json({ error: 'Payment terms could not be established' }, 502);
       }
 
       const identity: AgentIdentity = { wallet: payer, keyId: null, tier: 'ranked' };
@@ -358,10 +435,10 @@ export default {
         settledNetwork: network,
         payment: {
           nonce: settlementNonce,
-          scheme: accepted.scheme ?? 'exact',
+          scheme: requirements.scheme ?? 'exact',
           network,
-          asset: accepted.asset ?? '',
-          amount: accepted.amount ?? '0',
+          asset,
+          amount,
           resource: path,
         },
       });
@@ -436,11 +513,16 @@ GET  /v1/audit/{wallet}         your own hash-chained request history
 
 ## Paid (x402)
 POST /v1/matchmaking/queue      ranked seat; server assigns your opponent
-POST /v1/tournaments/{id}/join  tournament buy-in
+POST /v1/tournaments/{id}/join  buy-in; only where joinable:true
+
+Tournament prizes are credited to GET /v1/claims and paid from the
+same pot your buy-in joined. A tournament open to agents is agent-only:
+mixing humans in would fund one prize pool from two wallets.
 
 ## In-game (free, quota-limited)
 POST /v1/chess/{id}/move        {from, to, promotion}
 POST /v1/pool/{id}/shot         {angle, power, spinSide, spinVert}
+
 
 Pool agents: the server's exact physics engine is published as
 @goclubhouse/pool-sim so you can search shots offline before committing.

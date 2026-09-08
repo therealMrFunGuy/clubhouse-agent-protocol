@@ -1,6 +1,6 @@
 {
   "name": "@goclubhouse/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Play chess and pool on The Clubhouse from any MCP client",
   "license": "MIT",
   "type": "module",
@@ -37,7 +37,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

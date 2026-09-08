@@ -128,8 +128,11 @@ export function buildRoutes(env: Env) {
     },
     'POST /v1/tournaments/*/join': {
       resource: 'https://agents.goclubhouse.io/v1/tournaments/join',
-      description: 'Clubhouse tournament buy-in',
+      description: 'Buy-in to a Clubhouse agent tournament',
       mimeType: 'application/json',
+      // MUST equal the origin's AGENT_PRICE_TOURNAMENT_BASE. That check is an
+      // equality, not a floor, so a disagreement refuses every real payment —
+      // the correct failure for a price that has drifted on a money route.
       accepts: [option(env.PRICE_TOURNAMENT_ENTRY ?? '5.00')],
     },
   };
@@ -177,4 +180,69 @@ export function paymentHeaderFrom(request: Request): string | undefined {
     request.headers.get('X-PAYMENT') ??
     undefined
   );
+}
+
+/**
+ * The only protocol version this gateway will price a seat under.
+ *
+ * v1's requirement matching is materially weaker and must never run here — see
+ * `declaredX402Version`.
+ */
+export const SUPPORTED_X402_VERSION = 2;
+
+/**
+ * The x402 version a CLIENT declared, or null when no payment was presented.
+ *
+ * ## Why this is read separately, before the library sees it
+ *
+ * The library decodes the payment header with a bare `JSON.parse` of the
+ * base64 body — there is no schema — so every field in it, `x402Version`
+ * included, is attacker-controlled input rather than negotiated protocol state.
+ *
+ * That matters because `findMatchingRequirements` switches on this number.
+ * Under v2 it deep-equals the client's echoed `accepted` terms against the
+ * server's own requirement, so the terms cannot be forged. Under **v1 it
+ * compares `scheme` and `network` and nothing else** — leaving `amount` and
+ * `asset` free. Verification still charges the real price, so the money is
+ * right; but the *declared* figure downstream is not, and downstream is where
+ * this platform sizes the pot.
+ *
+ * Refusing the version outright is the narrow fix. It is deliberately checked
+ * BEFORE `processHTTPRequest`, because that call is what runs the weak match.
+ */
+export function declaredX402Version(header: string | undefined): number | null {
+  if (!header) return null;
+  try {
+    const decoded = JSON.parse(decodePaymentHeader(header));
+    const version = (decoded as Record<string, unknown>)?.x402Version;
+    // A missing or non-numeric version is not "probably fine": it is a payload
+    // whose shape we do not recognise, presented to a paid route.
+    return typeof version === 'number' ? version : NaN;
+  } catch {
+    // Undecodable, so the version is unknowable — and an unknowable version
+    // cannot be confirmed to be v2. Refusing is the only safe answer: letting
+    // it through means the library may still decode it and take the v1 branch.
+    return NaN;
+  }
+}
+
+/**
+ * Decode the payment header EXACTLY as @x402/core does.
+ *
+ * Deliberately mirrors its `safeBase64Decode` — standard base64 (the library's
+ * own regex is `/^[A-Za-z0-9+/]*={0,2}$/`, so no base64url), decoded through
+ * TextDecoder rather than treating `atob`'s binary string as text.
+ *
+ * The equivalence is the point. A guard that parses its input differently from
+ * the code it guards has a gap between the two readings, and that gap is where
+ * the thing being guarded against lives. Here it would be concrete: plain
+ * `atob` mangles any multi-byte UTF-8 in the payload, so a payload this
+ * function failed to read but the library read fine would be refused as a false
+ * positive — or, worse under a looser guard, waved through unchecked.
+ */
+function decodePaymentHeader(header: string): string {
+  const binary = atob(header);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
 }

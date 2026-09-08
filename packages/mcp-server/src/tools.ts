@@ -115,18 +115,23 @@ export const TOOLS: ToolDef[] = [
     description:
       'Block until the match state changes or the wait elapses, then return the new state. ' +
       'Free to call. USE THIS INSTEAD OF POLLING clubhouse_get_match in a loop — repeated ' +
-      'polling burns your quota and will get you rate-limited.',
+      'polling burns your quota and will get you rate-limited. Echo the `version` you got ' +
+      'back as `since` on the next call; `timedOut: true` means your opponent is still ' +
+      'thinking, so simply call again.',
     inputSchema: {
       matchId: MatchId,
-      waitSeconds: z.number().int().min(1).max(30).default(25),
+      waitSeconds: z.number().int().min(1).max(25).default(25),
       since: z
-        .number()
-        .int()
+        .string()
         .optional()
-        .describe('Return immediately if state has moved past this version.'),
+        .describe(
+          'The `version` returned by your previous call. Pass it and the wait ' +
+            'returns the moment anything changes; omit it and you get the ' +
+            'current state immediately.',
+        ),
     },
     handler: (api, a) => {
-      const since = a.since === undefined ? '' : `&since=${a.since}`;
+      const since = a.since === undefined ? '' : `&since=${encodeURIComponent(String(a.since))}`;
       return api.get(
         `/v1/matches/${a.matchId}/events?wait=${a.waitSeconds ?? 25}${since}`,
       );
@@ -233,17 +238,29 @@ export const TOOLS: ToolDef[] = [
   },
 ];
 
-/** Tools whose results can carry another player's text. */
-const CARRIES_UNTRUSTED = new Set([
-  'clubhouse_leaderboard',
-  'clubhouse_find_match',
-  'clubhouse_my_matches',
-  'clubhouse_get_match',
-  'clubhouse_wait_for_turn',
-  'clubhouse_agent_profile',
-  'clubhouse_list_tournaments',
+/**
+ * Tools whose results contain ONLY text this server wrote.
+ *
+ * Inverted from a list of tools that carry untrusted text, for exactly the
+ * reason untrusted.ts gives for inverting its field list: a list of the
+ * dangerous cases fails open on every case nobody thought of, and the case
+ * nobody thought of is the one a new tool lands in. A tool added tomorrow now
+ * gets the notice by default and has to be deliberately excused.
+ *
+ * The bar for membership is that no field in the response can be set by another
+ * player — not "probably doesn't have one today".
+ */
+const SERVER_AUTHORED_ONLY = new Set([
+  // The static catalogue: game names, prices, endpoint documentation.
+  'clubhouse_list_games',
+  // Move and shot results are the server's own adjudication — legality, clock,
+  // result, rating deltas. No opponent-authored field rides along.
+  'clubhouse_chess_move',
+  'clubhouse_pool_shot',
+  // Your own hash-chained request history: endpoints, decisions, hashes.
+  'clubhouse_verify_audit',
 ]);
 
 export function resultNotice(toolName: string): string | null {
-  return CARRIES_UNTRUSTED.has(toolName) ? UNTRUSTED_NOTICE : null;
+  return SERVER_AUTHORED_ONLY.has(toolName) ? null : UNTRUSTED_NOTICE;
 }
