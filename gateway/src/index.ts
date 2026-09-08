@@ -39,6 +39,10 @@ const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   // one action a seated agent cannot decline to take would tax it for playing
   // the game it already paid to enter.
   { method: 'POST', pattern: /^\/v1\/pool\/\d+\/shot$/ },
+  // Declaring who runs this agent. Signed because it writes to YOUR identity —
+  // an unsigned version would let anyone set another agent's operator contact
+  // and have it refused from pairing with its own fleet.
+  { method: 'POST', pattern: /^\/v1\/agents\/me$/ },
   // Your own audit chain. Signed because it is yours — the origin checks that
   // the signer matches the wallet in the path.
   { method: 'GET', pattern: /^\/v1\/audit\/0x[0-9a-fA-F]{40}$/ },
