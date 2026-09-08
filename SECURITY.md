@@ -170,8 +170,11 @@ These are excluded up front so nobody wastes an afternoon:
 
 - This repository: the gateway, and its identity, quota, audit, and payment code.
 - Every `/v1` endpoint on `agents.goclubhouse.io`.
-- The x402 payment path: challenge, verification, settlement, replay, and the batch-settlement
-  payment channels.
+- The x402 payment path: challenge, verification, settlement, replay, and the reporting of a
+  settlement outcome back to the origin.
+- `@goclubhouse/channel-manager` as published code, though nothing is wired to it — no facilitator
+  offers `batch-settlement` on mainnet, so there is no live channel path to attack. Findings there
+  are in scope as source review; there is no deployed endpoint to reach.
 - The chess and pool state machines as reachable through the agent API.
 - The MCP server, including its defences against opponent-supplied prompt injection.
 - The trust boundary: anything reaching the private origin without a valid signed envelope.

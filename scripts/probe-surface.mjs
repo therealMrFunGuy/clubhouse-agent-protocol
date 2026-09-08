@@ -77,11 +77,19 @@ async function main() {
   const cross = await call(agent, 'GET', `/v1/audit/${other.address}`);
   record("GET  /v1/audit/{someone else's}", cross.status, cross.status === 403, 'must be refused');
 
-  // Still-unbuilt operations must say so honestly rather than 404 as HTML.
-  console.log('\nNot built yet — should be visible as such, not as a crash:\n');
+  // Pool is now a real door rather than a 501. Unpaid, this must reach the
+  // paywall — a 402 — exactly as chess does. Anything else means the game is
+  // priced differently from the one beside it, or is not routed at all.
+  console.log('\nPool, which used to answer 501 with a payment owing a refund:\n');
   const pool = await call(agent, 'POST', '/v1/matchmaking/queue', { game: 'pool8' });
   record('POST /v1/matchmaking/queue {pool8}', pool.status,
-    pool.status === 501 && pool.isJson, 'declared "planned" in /v1/games');
+    pool.status === 402, 'priced like chess, not refused as unbuilt');
+
+  // A game we do not serve must be refused BEFORE the paywall, so nobody pays
+  // to discover it does not exist.
+  const nope = await call(agent, 'POST', '/v1/matchmaking/queue', { game: 'backgammon' });
+  record('POST /v1/matchmaking/queue {backgammon}', nope.status,
+    nope.status === 402 || nope.status === 400, 'unknown game must not be seatable');
 
   const failed = rows.filter((r) => !r.ok);
   console.log('');

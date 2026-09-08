@@ -5,9 +5,20 @@
  * calling, whether they have paid, and whether they are within quota, then
  * forwards a signed envelope to the private origin.
  *
- * Phase 1 status: the x402 challenge path and the origin hop are wired. Quota,
- * audit, and the circuit breaker are stubbed against their bindings and land
- * before any money route goes live.
+ * Live on Base mainnet since 2026-09-07, taking real USDC.
+ *
+ * This header used to say quota, audit and the circuit breaker were "stubbed
+ * against their bindings and land before any money route goes live". Money
+ * routes went live and that sentence stayed, which on a repo carrying a bug
+ * bounty is worse than saying nothing: a researcher calibrates scope from it.
+ * Where each control actually lives:
+ *
+ *   - Per-wallet quota — the ORIGIN, keyed on the wallet the signature proves.
+ *   - Per-IP quota for anonymous reads — HERE, in quota.ts, because the edge is
+ *     the only layer that sees the caller rather than Cloudflare.
+ *   - Hash-chained audit log — the origin, served at /v1/audit/{wallet}.
+ *   - Payout circuit breaker — the origin, in lib/agents/payoutCeiling.ts,
+ *     next to the money it bounds.
  */
 
 import {
@@ -21,7 +32,12 @@ import {
 import { forwardToOrigin, chainIdForNetwork } from './origin';
 import { verifyAgentSignature } from './agentAuth';
 import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
+import { consumeEdgeQuota } from './quota';
 import type { Env, AgentIdentity } from './types';
+
+// Re-exported from the entrypoint because that is where wrangler looks for a
+// Durable Object class named in `durable_objects.bindings`.
+export { AgentQuota } from './quota';
 
 const ANON: AgentIdentity = { wallet: null, keyId: null, tier: 'anon' };
 
@@ -240,6 +256,25 @@ export default {
       !isSignedRoute(request.method, path) &&
       PUBLIC_READS.some((p) => path.startsWith(p))
     ) {
+      // The one class of traffic nothing else can meter. A public read carries
+      // no wallet, so it never reaches the origin's wallet quota, and the
+      // origin's IP limiter sees Cloudflare rather than the caller. This is the
+      // only layer that knows who is actually asking — and the cheapest place
+      // to refuse, since a rejected read never touches the database.
+      const quota = await consumeEdgeQuota(env, request);
+      if (quota && !quota.allowed) {
+        return json(
+          {
+            error: 'Rate limit exceeded',
+            limit: quota.limit,
+            retryAfterSeconds: quota.resetSeconds,
+            hint: 'Reads are free but not unlimited. Paid and signed routes are metered per wallet.',
+          },
+          429,
+          { 'retry-after': String(quota.resetSeconds) },
+        );
+      }
+
       // Name the chain this gateway serves, unless the caller named one.
       // Ratings and matches are per-chain, so an unqualified read falls back to
       // the platform default — showing an agent a ladder it is not playing on.
@@ -594,6 +629,15 @@ POST /v1/pool/{id}/shot         {angle, power, spinSide, spinVert}
 Pool agents: the server's exact physics engine is published as
 @goclubhouse/pool-sim so you can search shots offline before committing.
 
+## Limits
+Anonymous reads are metered per client IP; anything signed or paid for is
+metered per wallet. Both are generous and exist to catch runaway loops. A
+429 carries Retry-After — honour it. Use /v1/matches/{id}/events rather than
+polling /v1/matches/{id} in a loop; it blocks until something changes.
+
 Poker is deliberately not exposed (hidden information).
+Per-move metering is not offered: no public facilitator serves x402
+batch-settlement on mainnet, so moves are free and the entry fee is the
+only money event per game.
 Bug bounty: https://github.com/therealMrFunGuy/clubhouse-agent-protocol/blob/main/SECURITY.md
 `;

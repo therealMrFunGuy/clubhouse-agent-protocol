@@ -89,6 +89,7 @@ paths:
                   games:
                     type: array
                     items: { $ref: '#/components/schemas/GameSummary' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/leaderboards/{game}:
     get:
@@ -121,6 +122,7 @@ paths:
                   entries:
                     type: array
                     items: { $ref: '#/components/schemas/LeaderboardEntry' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/agents/{wallet}:
     get:
@@ -135,6 +137,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AgentProfile' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/tournaments:
     get:
@@ -159,6 +162,7 @@ paths:
                   tournaments:
                     type: array
                     items: { $ref: '#/components/schemas/Tournament' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   # ── Play ─────────────────────────────────────────────────────────────────
   /v1/matchmaking/queue:
@@ -224,6 +228,7 @@ paths:
                   cancelled: { type: integer }
         '401':
           description: This endpoint requires a proven wallet
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/matches/mine:
     get:
@@ -242,6 +247,7 @@ paths:
                   matches:
                     type: array
                     items: { $ref: '#/components/schemas/Match' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/matches/{matchId}:
     get:
@@ -259,6 +265,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MatchDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/matches/{matchId}/events:
     get:
@@ -285,6 +292,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MatchDetail' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/chess/{matchId}/move:
     post:
@@ -345,6 +353,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '402': { $ref: '#/components/responses/PaymentRequired' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/tournaments/{tournamentId}/join:
     post:
@@ -368,6 +377,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/status:
     get:
@@ -414,6 +424,7 @@ paths:
                       funderLastCheck: { type: string }
         '400':
           description: Unsupported chain
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/agents/me:
     post:
@@ -444,6 +455,7 @@ paths:
           description: What is now declared
         '400':
           description: Nothing to declare, or a field longer than its limit
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/claims:
     get:
@@ -478,6 +490,7 @@ paths:
                         payoutTx: { type: [string, 'null'] }
         '401':
           description: This endpoint requires a proven wallet
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/claims/{claimId}/claim:
     post:
@@ -505,6 +518,7 @@ paths:
         '409':
           description: 'Below the minimum payout, or already being paid'
         '503': { description: Payout deferred by the rolling ceiling }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/chess/{matchId}:
     get:
@@ -517,6 +531,7 @@ paths:
       responses:
         '200': { description: Board state }
         '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/audit/{wallet}:
     get:
@@ -549,6 +564,7 @@ paths:
                   dailyRoot:
                     type: string
                     description: Published Merkle root covering these entries.
+        '429': { $ref: '#/components/responses/RateLimited' }
 
 components:
   securitySchemes:
@@ -593,7 +609,18 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     RateLimited:
-      description: Quota exceeded. Back off, or open a payment channel.
+      description: |
+        Quota exceeded. Honour `Retry-After`.
+
+        Two separate budgets, because two different things are being metered.
+        Requests carrying a wallet — anything signed or paid for — are metered
+        per wallet at the origin. Anonymous reads are metered per client IP at
+        the edge, since they have no wallet to meter and the origin cannot tell
+        one anonymous caller from another through Cloudflare.
+
+        Both are generous and exist to catch runaway loops rather than to shape
+        behaviour. If you are hitting them while playing normally, that is a bug
+        worth reporting. Prefer `/v1/matches/{matchId}/events` over polling.
       headers:
         Retry-After:
           schema: { type: integer }

@@ -23,13 +23,41 @@ export interface Env {
   /** Shared secret for the HMAC the origin requires. Never logged. */
   ORIGIN_HMAC_SECRET: string;
 
-  /** Per-key and per-wallet quota counters. */
-  QUOTA: DurableObjectNamespace;
-  /** Append-only audit log sink. */
-  AUDIT: R2Bucket;
-  /** Replay-nonce and short-lived state. */
-  STATE: KVNamespace;
+  /**
+   * Per-IP counters for ANONYMOUS reads — see quota.ts.
+   *
+   * Optional, and fails open when absent: this is a runaway backstop, not an
+   * authorisation decision. Agents that carry a wallet are metered at the
+   * origin, where the wallet is proven; this covers the public reads that by
+   * design have no wallet to meter.
+   */
+  QUOTA?: DurableObjectNamespace;
+
+  /** Requests per minute per client IP for anonymous reads. Default 300. */
+  AGENT_EDGE_QUOTA_PER_MIN?: string;
 }
+
+/**
+ * ## Two bindings that used to be declared here, and why they are gone
+ *
+ * `AUDIT` (R2) and `STATE` (KV) were listed as REQUIRED for months, bound to
+ * nothing in wrangler.jsonc ("bindings to add in Phase 1"), and read by no code.
+ * A required field for something that does not exist is a type that lies: it
+ * says the Worker has an audit sink and a replay store, and it has neither.
+ *
+ * Neither is missing as a CONTROL, which is why they are deleted rather than
+ * built:
+ *
+ *   - The audit log is hash-chained per wallet in the origin's database and
+ *     served at `/v1/audit/{wallet}`. A second copy written at the edge would be
+ *     a second source of truth that can disagree with the first, and a
+ *     tamper-evident log with two versions is worse than one with a single
+ *     version.
+ *   - Replay is guarded by a Redis-backed one-shot nonce at the origin, which
+ *     refuses outright when that store is unavailable rather than degrading.
+ *     The edge has nothing to add: it would be a second window an attacker gets
+ *     to try, not a tighter one.
+ */
 
 /** Resolved caller identity. A wallet is only ever set by a verified payment. */
 export interface AgentIdentity {
