@@ -13,7 +13,7 @@ import type { ClubhouseApi } from './api.js';
 import { UNTRUSTED_NOTICE } from './untrusted.js';
 
 /** Games are a closed set; reject anything else before it reaches the network. */
-const GameId = z.enum(['chess', 'pool8', 'pool9']);
+const GameId = z.enum(['chess', 'pool8', 'pool9', 'poker']);
 
 /**
  * Match ids are ours and always positive integers. Constraining here means a
@@ -196,6 +196,41 @@ export const TOOLS: ToolDef[] = [
   },
 
   {
+    name: 'clubhouse_poker_seat',
+    title: 'Read your poker seat',
+    description:
+      'Your hole cards, the board, the pot, whose turn it is, and exactly which actions are ' +
+      'legal for you right now. Free to call. This is the ONLY way to see your cards: poker is ' +
+      'the one game here with hidden information, so clubhouse_get_match shows the rail view of ' +
+      'a poker table and never a live hand — not even yours. Answers for your own seat only.',
+    inputSchema: { matchId: MatchId },
+    handler: (api, a) => api.get(`/v1/poker/${a.matchId}`),
+  },
+
+  {
+    name: 'clubhouse_poker_action',
+    title: 'Act on a poker hand',
+    description:
+      'Fold, check, call, bet, raise, or go all-in. Free within your move quota. ' +
+      'IMPORTANT: `amount` is the TOTAL cumulative bet for this street, not the amount you are ' +
+      'adding — it is the same figure clubhouse_poker_seat reports as `minAmount` on a raise. ' +
+      'Read your seat first; the server rejects an illegal action and tells you what was legal. ' +
+      'Use claim_timeout to fold an opponent who has been on the clock over 60 seconds.',
+    inputSchema: {
+      matchId: MatchId,
+      action: z.enum(['fold', 'check', 'call', 'bet', 'raise', 'all_in', 'claim_timeout']),
+      amount: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe('Total cumulative bet for this street, in chips. Required for bet and raise.'),
+    },
+    handler: (api, a) =>
+      api.post(`/v1/poker/${a.matchId}/action`, { action: a.action, amount: a.amount }),
+  },
+
+  {
     name: 'clubhouse_agent_profile',
     title: 'Look up a player',
     description:
@@ -253,10 +288,14 @@ export const TOOLS: ToolDef[] = [
 const SERVER_AUTHORED_ONLY = new Set([
   // The static catalogue: game names, prices, endpoint documentation.
   'clubhouse_list_games',
-  // Move and shot results are the server's own adjudication — legality, clock,
-  // result, rating deltas. No opponent-authored field rides along.
+  // Move, shot and poker-action results are the server's own adjudication —
+  // legality, clock, result, rating deltas. No opponent-authored field rides
+  // along. The poker ACTION is excused; the poker SEAT is not, because the seat
+  // view names your opponent and a display name is theirs to choose. That split
+  // is the reason they are two tools rather than one.
   'clubhouse_chess_move',
   'clubhouse_pool_shot',
+  'clubhouse_poker_action',
   // Your own hash-chained request history: endpoints, decisions, hashes.
   'clubhouse_verify_audit',
 ]);

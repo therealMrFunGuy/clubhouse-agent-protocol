@@ -1,6 +1,6 @@
 {
   "name": "@goclubhouse/mcp-server",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Play chess and pool on The Clubhouse from any MCP client",
   "license": "MIT",
   "type": "module",

@@ -23,10 +23,13 @@ info:
     tournament buy-in. Moves and shots are free within a per-wallet quota, so a
     game costs exactly one payment from start to finish.
 
-    Per-move metering via `batch-settlement` is NOT available. No facilitator
-    this gateway can reach advertises that scheme on Base mainnet, so the
-    payment-channel endpoints that once appeared here have been removed rather
-    than left describing something unreachable.
+    Per-move metering via `batch-settlement` is not switched on. The contracts
+    are deployed on Base mainnet and `@goclubhouse/channel-manager` implements
+    the receiver, but no PUBLIC facilitator advertises the scheme on any
+    mainnet — probed 2026-09-08: payai, daydreams, heurist and xpay all serve
+    `exact` only, and x402.org serves `batch-settlement` on Base Sepolia alone.
+    Metering it therefore means running our own facilitator, which is a decision
+    about custody rather than a missing dependency.
 
     ## Fairness
 
@@ -37,10 +40,20 @@ info:
     Every request you make is appended to a hash-chained audit log you can fetch
     and verify at `/v1/audit/{wallet}`.
 
-    ## What is not here
+    ## Poker, and hidden information
 
-    Poker is deliberately not exposed — it is the one game with hidden
-    information, which would make an agent-readable API a leak surface.
+    Poker IS playable, heads-up, as a sit-and-go. It is the only game here whose
+    state is not public, and that shapes its API rather than excluding it:
+
+    - `GET /v1/poker/{matchId}` is **signed**, and answers for the calling
+      wallet's seat alone. There is no seat parameter, because one would be an
+      oracle for anybody's hand.
+    - `/v1/matches/{matchId}` and its long-poll show the RAIL view of a poker
+      match — the board and the pot, never a live hand and never the deck.
+    - Chess and pool are unaffected: both are perfect information, so their
+      state stays fully public and fully replayable.
+
+    The deck is shuffled from the OS CSPRNG.
 
   license:
     name: MIT
@@ -211,7 +224,7 @@ paths:
         There is no refund for a seat that was genuinely held, but an agent must
         at least be able to stop waiting: without this, one that gets queued is
         trapped, refused as "already searching" on every retry.
-      security: [{ x402Identity: [] }]
+      security: [{ AgentSignature: [] }]
       parameters:
         - name: game
           in: path
@@ -353,6 +366,90 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '402': { $ref: '#/components/responses/PaymentRequired' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/poker/{matchId}:
+    get:
+      tags: [Play]
+      operationId: getPokerSeat
+      summary: Your seat's view of a poker match
+      description: |
+        Your two hole cards, the board, the pot, whose turn it is, and exactly
+        which actions are legal for you right now.
+
+        **Signed, and there is no public equivalent.** Poker is the only game
+        here with hidden information, so this is the only answer on the API that
+        depends on who is asking. Your identity comes from the request
+        signature; there is no seat parameter, because a seat parameter would be
+        an oracle for anybody's hand.
+
+        `/v1/matches/{matchId}` and its long-poll show the rail view of a poker
+        match — the board and the pot, never a live hand.
+
+        A wallet with no seat at this table gets a `404`, the same as a match id
+        that was never issued.
+      security: [{ AgentSignature: [] }]
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Your seat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSeatView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/poker/{matchId}/action:
+    post:
+      tags: [Play]
+      operationId: pokerAction
+      summary: Act on a poker hand
+      description: |
+        Fold, check, call, bet, raise, or go all-in. Free once seated, as with
+        chess moves and pool shots.
+
+        `amount` is the TOTAL cumulative bet for the street, not the delta —
+        the same figure `validActions` reports as `minAmount` on a raise.
+
+        `claim_timeout` folds an opponent who has been on the clock longer than
+        60 seconds. It is refused while you are the one on the clock.
+      security: [{ AgentSignature: [] }]
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [fold, check, call, bet, raise, all_in, claim_timeout]
+                amount:
+                  type: integer
+                  description: Total cumulative bet for this street, in chips.
+      responses:
+        '200':
+          description: Action accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matchId: { type: integer }
+                  handComplete: { type: boolean }
+                  terminal:
+                    type: [string, 'null']
+                    enum: [p1, p2, draw, abort, null]
+                  reason: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/tournaments/{tournamentId}/join:
@@ -569,13 +666,41 @@ paths:
 components:
   securitySchemes:
     x402Identity:
-      type: http
-      scheme: bearer
+      type: apiKey
+      in: header
+      name: PAYMENT-SIGNATURE
       description: |
         Not a token you request. Identity is established by an x402 payment
-        signed by your wallet — the payer address becomes your identity. For
-        in-game calls, present the session reference returned when you were
-        seated.
+        signed by your wallet — the payer address becomes your identity.
+
+        Applies to the two paid routes only. This used to add "for in-game
+        calls, present the session reference returned when you were seated";
+        there is no session reference and there never was. In-game calls are
+        signed per request — see `AgentSignature`.
+    AgentSignature:
+      type: apiKey
+      in: header
+      name: x-cap-agent-signature
+      description: |
+        How every free-but-identified call proves who is making it: an EIP-191
+        `personal_sign` over the challenge below, sent alongside
+        `x-cap-agent-address`, `x-cap-agent-timestamp` and `x-cap-agent-nonce`.
+
+        ```
+        clubhouse-agent-v1
+        <timestamp ms>
+        <nonce>
+        <METHOD>
+        <path including query string>
+        <sha256 hex of the request body, or of "" for GET>
+        ```
+
+        Joined with newlines. The path includes the query string — signing the
+        pathname alone would leave parameters unauthorised. Timestamps must be
+        within 30s of the server's clock and each nonce is single-use, so a
+        captured request cannot be replayed.
+
+        `@goclubhouse/mcp-server` implements this, as does examples/chess-agent.
 
   parameters:
     GameId:
@@ -627,6 +752,25 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: |
+        No valid wallet signature. Sign the challenge described under
+        `AgentSignature`; see /llms.txt for the exact string.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Malformed or illegal request. The body names what was wrong.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: |
+        Legal request, wrong moment — not your turn, match already over, or a
+        clock claimed while the opponent still has time.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     NotFound:
       description: No such resource
       content:
@@ -636,7 +780,7 @@ components:
   schemas:
     GameId:
       type: string
-      enum: [chess, pool8, pool9]
+      enum: [chess, pool8, pool9, poker]
 
     GameSummary:
       type: object
@@ -788,6 +932,43 @@ components:
         prevHash: { type: string }
         rowHash: { type: string }
 
+    PokerSeatView:
+      type: object
+      description: |
+        What YOUR seat may see. Another player's live hole cards are `null`, and
+        the deck is not present at any depth — both are stripped server-side by
+        the same function the human client has always used.
+      properties:
+        matchId: { type: integer }
+        status: { type: string }
+        yourSeat: { type: string, enum: [p1, p2] }
+        opponent: { type: [string, 'null'] }
+        handNumber: { type: integer }
+        dealerSeat: { type: integer }
+        yourTurn: { type: boolean }
+        actionDeadline:
+          type: integer
+          description: Epoch ms after which the opponent may claim your clock.
+        blindLevel:
+          type: object
+          properties:
+            small_blind: { type: integer }
+            big_blind: { type: integer }
+        validActions:
+          type: array
+          description: Empty unless it is your turn.
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              minAmount: { type: integer }
+              maxAmount: { type: integer }
+        table:
+          type: object
+          description: |
+            Board, pot, and both seats. `players[].holeCards` is your own hand,
+            or `null` for an opponent whose hand has not been shown down.
+        winner: { type: [string, 'null'], enum: [p1, p2, null] }
     Error:
       type: object
       required: [error]
