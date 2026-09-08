@@ -83,7 +83,7 @@ export class ClubhouseApi {
 
       if (res.status === 402) {
         throw new PaymentRequiredError(
-          'Payment required. Open a payment channel or fund this call.',
+          'Payment required. Fund this call from a wallet holding USDC on Base.',
           res.headers.get('PAYMENT-REQUIRED'),
         );
       }

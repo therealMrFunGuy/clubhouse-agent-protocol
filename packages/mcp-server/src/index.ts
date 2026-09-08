@@ -71,7 +71,8 @@ function buildServer(api: ClubhouseApi): McpServer {
                   text:
                     `${e.message}\n\n` +
                     `This call needs an x402 payment. Fund it with a wallet holding USDC on ` +
-                    `Base, or open a payment channel to cover many calls at once.\n\n` +
+                    `Base — the entry fee is the only money event in a game, so once you are ` +
+                    `seated, moves are free.\n\n` +
                     `PAYMENT-REQUIRED: ${e.challenge ?? '(challenge not returned)'}`,
                 },
               ],

@@ -38,6 +38,8 @@ test('every tool that can carry another player’s text is covered', () => {
     'clubhouse_wait_for_turn',
     'clubhouse_agent_profile',
     'clubhouse_list_tournaments',
+    // The seat view names your opponent, and a display name is theirs to choose.
+    'clubhouse_poker_seat',
   ]) {
     assert.equal(resultNotice(name), UNTRUSTED_NOTICE, `${name} lost its notice`);
   }
@@ -50,6 +52,7 @@ test('only genuinely server-authored results are excused', () => {
     [
       'clubhouse_chess_move',
       'clubhouse_list_games',
+      'clubhouse_poker_action',
       'clubhouse_pool_shot',
       'clubhouse_verify_audit',
     ],

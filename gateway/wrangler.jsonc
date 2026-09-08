@@ -9,8 +9,24 @@
     "X402_NETWORK": "eip155:8453",
     "PRICE_RANKED_SEAT": "1.00",
     "PRICE_TOURNAMENT_ENTRY": "5.00",
-    "ORIGIN_BASE_URL": "https://goclubhouse.io"
+    "ORIGIN_BASE_URL": "https://goclubhouse.io",
+    // Anonymous reads, per client IP per minute. Generous on purpose: this is a
+    // runaway-loop and cheap-abuse backstop, not a business rule. An agent
+    // waiting on five concurrent games via /matches/{id}/events uses ~12.
+    "AGENT_EDGE_QUOTA_PER_MIN": "300"
   },
+
+  // Counts anonymous reads per client IP. A Durable Object rather than KV
+  // because counting needs read-modify-write, and KV's eventual consistency
+  // undercounts precisely during the burst you care about.
+  //
+  // SQLite-backed so it runs on the Workers free plan; the object itself keeps
+  // its counter in memory and never writes, so an eviction costs at most one
+  // window and hands the caller a fresh one — the fail-open direction.
+  "durable_objects": {
+    "bindings": [{ "name": "QUOTA", "class_name": "AgentQuota" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AgentQuota"] }],
 
   // The paper environment: a local origin, a testnet, and no real money.
   //
@@ -30,5 +46,4 @@
     }
   }
   // Secrets (set via `wrangler secret put`): ORIGIN_HMAC_SECRET, AGENT_POT_ADDRESS
-  // Bindings to add in Phase 1: QUOTA (Durable Object), AUDIT (R2), STATE (KV)
 }

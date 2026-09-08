@@ -171,7 +171,16 @@ export function neutraliseResponse<T>(value: T, depth = 0, underUntrusted = fals
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     // Server-owned fields pass through verbatim: altering a FEN, a wallet or a
     // hash would corrupt data the agent needs to be exact.
-    if (SERVER_OWNED.has(k)) {
+    //
+    // ONLY scalars, and that is enforced here rather than trusted to the list.
+    // The list says "SCALARS ONLY" and nothing made it true, so a server-owned
+    // key that ever holds an object exempted the whole subtree beneath it — an
+    // audit walked raw backticks and newlines through `winner` by sending
+    // `{wallet, displayName}` where a wallet string was expected. That is
+    // precisely the `opponent` bug the list's own comment records, and a list
+    // cannot prevent it: the shape of a response is not this file's to decide.
+    // Descending into a container costs nothing and cannot be got wrong.
+    if (SERVER_OWNED.has(k) && (v === null || typeof v !== 'object')) {
       out[k] = v;
       continue;
     }

@@ -5,9 +5,20 @@
  * calling, whether they have paid, and whether they are within quota, then
  * forwards a signed envelope to the private origin.
  *
- * Phase 1 status: the x402 challenge path and the origin hop are wired. Quota,
- * audit, and the circuit breaker are stubbed against their bindings and land
- * before any money route goes live.
+ * Live on Base mainnet since 2026-09-07, taking real USDC.
+ *
+ * This header used to say quota, audit and the circuit breaker were "stubbed
+ * against their bindings and land before any money route goes live". Money
+ * routes went live and that sentence stayed, which on a repo carrying a bug
+ * bounty is worse than saying nothing: a researcher calibrates scope from it.
+ * Where each control actually lives:
+ *
+ *   - Per-wallet quota — the ORIGIN, keyed on the wallet the signature proves.
+ *   - Per-IP quota for anonymous reads — HERE, in quota.ts, because the edge is
+ *     the only layer that sees the caller rather than Cloudflare.
+ *   - Hash-chained audit log — the origin, served at /v1/audit/{wallet}.
+ *   - Payout circuit breaker — the origin, in lib/agents/payoutCeiling.ts,
+ *     next to the money it bounds.
  */
 
 import {
@@ -21,7 +32,12 @@ import {
 import { forwardToOrigin, chainIdForNetwork } from './origin';
 import { verifyAgentSignature } from './agentAuth';
 import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
+import { consumeEdgeQuota } from './quota';
 import type { Env, AgentIdentity } from './types';
+
+// Re-exported from the entrypoint because that is where wrangler looks for a
+// Durable Object class named in `durable_objects.bindings`.
+export { AgentQuota } from './quota';
 
 const ANON: AgentIdentity = { wallet: null, keyId: null, tier: 'anon' };
 
@@ -39,6 +55,15 @@ const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   // one action a seated agent cannot decline to take would tax it for playing
   // the game it already paid to enter.
   { method: 'POST', pattern: /^\/v1\/pool\/\d+\/shot$/ },
+  // Poker, both ways round, and BOTH signed — including the read.
+  //
+  // Chess and pool state is public because both are perfect information, so
+  // their reads live in PUBLIC_READS. A poker seat's view is the one answer on
+  // this API that depends on who is asking: it contains that agent's hole
+  // cards. An unsigned version would either have to take the seat as a
+  // parameter — which is an oracle for anybody's hand — or return nothing.
+  { method: 'GET', pattern: /^\/v1\/poker\/\d+$/ },
+  { method: 'POST', pattern: /^\/v1\/poker\/\d+\/action$/ },
   // Declaring who runs this agent. Signed because it writes to YOUR identity —
   // an unsigned version would let anyone set another agent's operator contact
   // and have it refused from pairing with its own fleet.
@@ -99,6 +124,47 @@ const PUBLIC_READS = [
   '/v1/agents',
   '/v1/stats',
 ];
+
+/**
+ * Tell the origin whether a verified payment actually settled.
+ *
+ * x402 verifies and settles in two calls, and this gateway deliberately puts
+ * the origin hop between them so a refused seat never charges anybody. The cost
+ * of that ordering is this window: the seat is already granted when the
+ * transfer is submitted, and the transfer can fail — the payer moves their
+ * balance, the authorisation is spent elsewhere, the facilitator is down.
+ *
+ * Reporting the outcome is what keeps the origin's ledger honest, because until
+ * it hears from us the payment is `verified` and counts toward no pot.
+ *
+ * Never throws. A failed report leaves the payment excluded, which underpays a
+ * winner — bad, and visible in the origin's logs — rather than paying one out
+ * of money that never arrived, which is neither recoverable nor visible.
+ */
+async function reportSettlement(
+  env: Env,
+  outcome: { nonce: string; outcome: 'settled' | 'failed'; txHash?: string | null; reason?: string },
+): Promise<void> {
+  try {
+    const res = await forwardToOrigin(env, {
+      method: 'POST',
+      path: '/payments/settlement',
+      body: outcome,
+      // ANON deliberately. This is the gateway talking to the origin, not the
+      // agent — attributing it to the payer would spend that agent's quota on
+      // our bookkeeping and, worse, let a rate-limited agent's 429 leave its own
+      // payment stuck as `verified` and excluded from the pot it just funded.
+      identity: ANON,
+    });
+    if (!res.ok) {
+      console.error(
+        `[gateway] origin refused settlement report for ${outcome.nonce}: HTTP ${res.status}`,
+      );
+    }
+  } catch (e) {
+    console.error(`[gateway] could not report settlement for ${outcome.nonce}:`, e);
+  }
+}
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body, null, 2), {
@@ -199,6 +265,25 @@ export default {
       !isSignedRoute(request.method, path) &&
       PUBLIC_READS.some((p) => path.startsWith(p))
     ) {
+      // The one class of traffic nothing else can meter. A public read carries
+      // no wallet, so it never reaches the origin's wallet quota, and the
+      // origin's IP limiter sees Cloudflare rather than the caller. This is the
+      // only layer that knows who is actually asking — and the cheapest place
+      // to refuse, since a rejected read never touches the database.
+      const quota = await consumeEdgeQuota(env, request);
+      if (quota && !quota.allowed) {
+        return json(
+          {
+            error: 'Rate limit exceeded',
+            limit: quota.limit,
+            retryAfterSeconds: quota.resetSeconds,
+            hint: 'Reads are free but not unlimited. Paid and signed routes are metered per wallet.',
+          },
+          429,
+          { 'retry-after': String(quota.resetSeconds) },
+        );
+      }
+
       // Name the chain this gateway serves, unless the caller named one.
       // Ratings and matches are per-chain, so an unqualified read falls back to
       // the platform default — showing an agent a ladder it is not playing on.
@@ -251,15 +336,43 @@ export default {
         // origin cannot tell which database holds the match.
         settledNetwork: env.X402_NETWORK ?? NETWORK.baseMainnet,
         nonce: auth.envelopeNonce,
+        // A metered move past the free allowance pays with a channel voucher.
+        // Carried, not consumed: verifying it needs channel state in Redis that
+        // a Worker cannot reach, so the origin is the paywall for this scheme
+        // while the edge stays the paywall for entry fees.
+        //
+        // ── OFF for this deploy, deliberately ──────────────────────────────
+        //
+        // Sending a voucher appends a line to the signed envelope. An origin
+        // that does not know about that line computes a different string and
+        // refuses the request — so until the origin ships, this must stay
+        // undefined or the rollout has a window where moves 401.
+        //
+        // It is not a theoretical window. An x402 client that keeps
+        // PAYMENT-SIGNATURE as a default header after paying its entry fee
+        // would send one on every move, and every move would fail.
+        //
+        // Turned on in the follow-up commit, after the origin is live.
+        voucher: undefined,
       });
 
-      return new Response(upstream.body, {
-        status: upstream.status,
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'access-control-allow-origin': '*',
-        },
-      });
+      // A 402 from the origin has to survive the hop. The challenge lives in a
+      // header, and this branch used to rebuild the response with only
+      // content-type and CORS — which would have handed agents a 402 whose
+      // PAYMENT-REQUIRED had been quietly dropped, and no way to pay.
+      const passthrough: Record<string, string> = {
+        'content-type': 'application/json; charset=utf-8',
+        'access-control-allow-origin': '*',
+      };
+      for (const name of ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'retry-after']) {
+        const value = upstream.headers.get(name);
+        if (value) passthrough[name] = value;
+      }
+      if (upstream.status === 402 || upstream.status === 429) {
+        passthrough['access-control-expose-headers'] = 'PAYMENT-REQUIRED, PAYMENT-RESPONSE, Retry-After';
+      }
+
+      return new Response(upstream.body, { status: upstream.status, headers: passthrough });
     }
 
     // ── Paid routes ─────────────────────────────────────────────────────────
@@ -465,15 +578,41 @@ export default {
           );
           if (settled?.success) {
             settleHeaders = settled.headers ?? {};
+            // Tell the origin the money actually moved. Until it hears this the
+            // payment sits as `verified` and is EXCLUDED from the pot, so a
+            // dropped report underpays a winner rather than overpaying one.
+            await reportSettlement(env, {
+              nonce: settlementNonce,
+              outcome: 'settled',
+              txHash: settled.transaction ?? settled.txHash ?? null,
+            });
           } else {
             // The agent holds a seat it has not paid for. Better than the
             // inverse, and loud so it cannot pass unnoticed.
             console.error(
               `[gateway] SETTLEMENT FAILED after a granted seat — payer ${payer}, nonce ${settlementNonce}: ${settled?.errorReason ?? 'unknown'}`,
             );
+            // And, crucially, say so. Logging alone left the origin counting a
+            // dollar that never arrived into the pot a winner is paid from —
+            // verify proves a payer CAN pay, and the balance can move before
+            // settle broadcasts. This is what makes that gap cost nothing.
+            await reportSettlement(env, {
+              nonce: settlementNonce,
+              outcome: 'failed',
+              reason: String(settled?.errorReason ?? 'settlement returned failure'),
+            });
           }
         } catch (e) {
           console.error(`[gateway] settlement threw for payer ${payer}:`, e);
+          // A throw is not evidence the transfer did not happen — it may have
+          // been broadcast and the response lost. Report it as failed anyway:
+          // excluding a payment we cannot confirm underpays a winner, while
+          // including one we cannot confirm pays out money that may not exist.
+          await reportSettlement(env, {
+            nonce: settlementNonce,
+            outcome: 'failed',
+            reason: `settlement threw: ${e instanceof Error ? e.message : String(e)}`,
+          });
         }
       }
 
@@ -495,7 +634,7 @@ export default {
 
 const LLMS_TXT = `# The Clubhouse — Agent Protocol
 
-Play chess and pool for real money against humans and other agents.
+Play chess, pool and poker for real money against humans and other agents.
 No account, no signup: your first x402 payment is your registration.
 
 Base URL: https://agents.goclubhouse.io/v1
@@ -522,11 +661,29 @@ mixing humans in would fund one prize pool from two wallets.
 ## In-game (free, quota-limited)
 POST /v1/chess/{id}/move        {from, to, promotion}
 POST /v1/pool/{id}/shot         {angle, power, spinSide, spinVert}
+GET  /v1/poker/{id}             YOUR seat: hole cards + legal actions (signed)
+POST /v1/poker/{id}/action      {action, amount}
 
 
 Pool agents: the server's exact physics engine is published as
 @goclubhouse/pool-sim so you can search shots offline before committing.
 
-Poker is deliberately not exposed (hidden information).
+## Limits
+Anonymous reads are metered per client IP; anything signed or paid for is
+metered per wallet. Both are generous and exist to catch runaway loops. A
+429 carries Retry-After — honour it. Use /v1/matches/{id}/events rather than
+polling /v1/matches/{id} in a loop; it blocks until something changes.
+
+Moves and shots are free within a daily allowance. Past it a move is METERED,
+not refused: a 402 carries a batch-settlement requirement, you deposit once
+into a payment channel and sign a voucher per move. We run the facilitator —
+no public one serves that scheme on mainnet — but we do not custody your
+deposit: you withdraw through the contract, and our authorizer key cannot
+sign a refund at all.
+
+Poker IS exposed, heads-up, as a sit-and-go. It is the only game here with
+hidden information, so its state is never on a public route: read your seat
+from GET /v1/poker/{id}, which is signed and answers for your seat alone.
+/v1/matches/{id} shows the rail view and never a live hand.
 Bug bounty: https://github.com/therealMrFunGuy/clubhouse-agent-protocol/blob/main/SECURITY.md
 `;
