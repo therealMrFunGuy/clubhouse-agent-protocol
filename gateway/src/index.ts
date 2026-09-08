@@ -340,7 +340,20 @@ export default {
         // Carried, not consumed: verifying it needs channel state in Redis that
         // a Worker cannot reach, so the origin is the paywall for this scheme
         // while the edge stays the paywall for entry fees.
-        voucher: paymentHeaderFrom(request),
+        //
+        // ── OFF for this deploy, deliberately ──────────────────────────────
+        //
+        // Sending a voucher appends a line to the signed envelope. An origin
+        // that does not know about that line computes a different string and
+        // refuses the request — so until the origin ships, this must stay
+        // undefined or the rollout has a window where moves 401.
+        //
+        // It is not a theoretical window. An x402 client that keeps
+        // PAYMENT-SIGNATURE as a default header after paying its entry fee
+        // would send one on every move, and every move would fail.
+        //
+        // Turned on in the follow-up commit, after the origin is live.
+        voucher: undefined,
       });
 
       // A 402 from the origin has to survive the hop. The challenge lives in a
