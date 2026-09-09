@@ -184,14 +184,15 @@ Settling a fraction of a cent on-chain per move would cost more in gas than the 
 is exactly what x402's `batch-settlement` scheme solves: you deposit once into a payment channel,
 sign an off-chain voucher per move, and we redeem the accumulated vouchers in a single claim.
 
-**We run our own facilitator, because a metered move costs less than any public one will process.**
-Dexter's minimum payment on Base is 1079 base units; a move here costs 500. We use the canonical
-x402 contracts already deployed on Base — we did not write them.
+**We run our own facilitator so that the key which signs claims stays ours.** Public facilitators
+do serve `batch-settlement` on Base — but CDP's offer carries its own `receiverAuthorizer`, and an
+unrestricted authorizer can empty every channel. We use the canonical x402 contracts already
+deployed on Base; we did not write them.
 
-> Corrected 2026-09-09: this used to claim no public facilitator served `batch-settlement` on any
-> mainnet. Dexter does, on six EVM mainnets, free. See
-> [docs/payment-channels.md](docs/payment-channels.md) for the corrected probe and why the
-> conclusion still holds.
+> Corrected twice on 2026-09-09. First this claimed no public facilitator served `batch-settlement`
+> on any mainnet (false — Dexter and CDP both do). The fix then claimed none would take a payment as
+> small as a metered move, which generalised from Dexter's floor alone; CDP advertises no minimum.
+> See [docs/payment-channels.md](docs/payment-channels.md).
 
 What that means for your deposit:
 
@@ -320,10 +321,10 @@ writing, and reporting them again is not a finding:
 
 ### Per-move metering
 
-Metering past the free allowance uses x402 `batch-settlement`. We facilitate it ourselves because a
-metered move costs 500 base units, below the 1079 minimum a public facilitator will process. It is
-Base-only (that is where the contracts are deployed), and it is gated behind
-`AGENT_CHANNELS_ENABLED` plus three separate keys, per chain.
+Metering past the free allowance uses x402 `batch-settlement`. We facilitate it ourselves to keep
+the authorizer key, not because no one else will take the payment. It is Base-only (that is where
+the contracts are deployed), and it is gated behind `AGENT_CHANNELS_ENABLED` plus three separate
+keys, per chain.
 
 **`GET /v1/status` is the authority on whether it is actually live**, not this README: read
 `metering.enabled`, and `metering.missing` when it is false. Where it is not enabled, the free move

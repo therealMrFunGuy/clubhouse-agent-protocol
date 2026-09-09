@@ -1,12 +1,13 @@
 /**
  * Our self-hosted x402 facilitator, for the `batch-settlement` scheme only.
  *
- * Public facilitators DO offer batch-settlement on mainnet — Dexter serves six
- * EVM chains, free. What they will not do is process a payment as small as a
- * metered move: Dexter's floor on Base is 1079 base units and a move costs 500.
- * Self-facilitating is what buys the price granularity, not availability.
- * (This said "no public facilitator offers it on any mainnet" until 2026-09-09.
- * That was false when written — the probe set omitted Dexter.)
+ * Public facilitators DO offer batch-settlement on mainnet: Dexter on six EVM
+ * chains, and CDP on Base among others. A receiver runs its own when it needs
+ * to hold the authorizer key itself — CDP's offer comes with CDP's
+ * `receiverAuthorizer`, and an unrestricted authorizer can empty every channel.
+ * (Two earlier versions of this comment were wrong: first "no public
+ * facilitator offers it on any mainnet", then "none will take a payment as
+ * small as ours". Both generalised from an incomplete probe.)
  *
  * This is deliberately the *smallest* facilitator that does the job: one scheme,
  * one network, no custody, no discovery surface.

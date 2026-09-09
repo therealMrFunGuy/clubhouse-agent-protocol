@@ -15,8 +15,8 @@ voucher per move, and the receiver redeems the accumulated vouchers in one on-ch
 > about them by name, not because you can grep for them here, and each is flagged again at the point
 > it is used.
 
-**We run our own facilitator, because our per-move price is below what any public one accepts.**
-Probed 2026-09-08, corrected 2026-09-09:
+**We run our own facilitator so that the key which signs claims stays ours.**
+Probed 2026-09-08, corrected twice on 2026-09-09:
 
 | Facilitator | Schemes | batch-settlement |
 |---|---|---|
@@ -26,6 +26,7 @@ Probed 2026-09-08, corrected 2026-09-09:
 | `facilitator.xpay.sh` | `exact` | no |
 | `x402.org/facilitator` | `exact`, `upto`, `batch-settlement` | **Base Sepolia only** |
 | `facilitator.dexter.cash` | `exact`, `tab`, `upto`, `batch-settlement`, `bridge` | **yes — 6 EVM mainnets** |
+| `api.cdp.coinbase.com` (Coinbase) | `exact`, `upto`, `batch-settlement` | **yes — Base mainnet + 5 more** |
 
 > ⚠️ **This page used to say no public facilitator served the scheme on any mainnet. That was
 > wrong.** Dexter serves `batch-settlement` on Base, Polygon, Arbitrum, World Chain, Monad and one
@@ -34,17 +35,30 @@ Probed 2026-09-08, corrected 2026-09-09:
 > `facilitator.dexter.cash` answers `308` and the body was read without following the redirect. A
 > probe that returns *something* is not a probe that returned *the answer*.
 
-The conclusion survives the correction, for a measured reason rather than an assumed one:
+> ⚠️ **Corrected a second time, hours later.** The first fix said the reason was price — Dexter's
+> floor is 1079 base units and a metered move is 500 — and concluded "no public facilitator will
+> process a payment as small as ours". That generalised from one facilitator, which is the same
+> mistake in the same shape. Probed with a real CDP key: CDP serves `batch-settlement` on Base and
+> advertises **no minimum payment at all**, so it would very likely take our 500.
 
-| | base units | USD |
-|---|---|---|
-| Dexter's minimum payment on Base (`minPaymentAmountAtomic`) | 1079 | $0.00108 |
-| One metered move here | 500 | $0.0005 |
+The real reason is the authorizer. CDP's batch-settlement offer carries its own:
 
-A metered move is less than half the smallest payment a public facilitator will process. Per-move
-metering at this granularity is possible *because* we facilitate it ourselves and absorb the gas.
-The entry fee is different — `exact` at 500000 base units clears any public floor easily, so routing
-that through a public facilitator is a real option.
+```
+extra.receiverAuthorizer = 0x3721824a31197dcDD2984cF43b92B6cc8A87c0Fb
+```
+
+Using it means the key that signs `ClaimBatch` is theirs. `refundWithSignature` takes **no payer
+signature**, so an unrestricted authorizer can push funds out of any channel — which is why ours is
+refused `Refund` in code. Delegating that is not a configuration change, it is a change of who can
+take the money. It could not be retrofitted anyway: `computeChannelId` binds the channelConfig,
+authorizer included, so every existing channel is tied to the authorizer it opened with.
+
+Dexter's 1079 floor is still true and still rules Dexter out for per-move pricing. It is simply not
+the general rule the previous version of this page claimed.
+
+The entry fee is a different matter — `exact` at 500000 base units clears any floor easily, so
+routing *that* through a public facilitator is a real option, and it is how Bazaar indexing is
+earned.
 
 The contracts, however, are deployed and verified on Base mainnet — canonical x402 CREATE2
 deployments, not ours:

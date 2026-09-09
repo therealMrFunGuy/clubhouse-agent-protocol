@@ -6,10 +6,11 @@
  * There are two payment schemes here and they had two different facilitators,
  * which is a distinction that is easy to lose:
  *
- *   - `batch-settlement` — per-move metering. Public facilitators do serve this
- *     on mainnet (corrected 2026-09-09 — Dexter, six EVM chains, free), but
- *     none will process a payment as small as a move: their floor on Base is
- *     1079 base units and a move costs 500. So we run it ourselves.
+ *   - `batch-settlement` — per-move metering. Public facilitators DO serve this
+ *     on mainnet (Dexter and CDP both), and CDP advertises no minimum, so we
+ *     could probably pay through it. We run it ourselves because CDP's offer
+ *     carries its own `receiverAuthorizer` — the key that signs ClaimBatch, and
+ *     that can empty every channel. That key stays ours.
  *   - `exact` — the entry fee. Public facilitators serve this, and until now
  *     that is what the gateway used.
  *

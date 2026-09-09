@@ -15,14 +15,16 @@ Settling a fraction of a cent on-chain per chess move costs more gas than the mo
 `batch-settlement` solves that: an agent deposits once into a payment channel, signs an off-chain
 voucher per move, and the receiver redeems the accumulated vouchers in a single on-chain claim.
 
-**A receiver runs its own facilitator when its prices are too small for a public one.** Dexter
-serves `batch-settlement` on six EVM mainnets, free, but will not process a payment under 1079 base
-units on Base ($0.00108) — so any per-call price below that has to be self-facilitated. The
-contracts themselves are the canonical x402 CREATE2 deployments on Base; we did not write them.
+**A receiver runs its own facilitator when it needs to hold the authorizer key itself.** Public
+facilitators serve `batch-settlement` on Base — Dexter and CDP both — but CDP's offer carries its
+own `receiverAuthorizer`, and whoever holds an unrestricted authorizer can empty every channel.
+Dexter separately will not process a payment under 1079 base units on Base ($0.00108), which rules
+it out for per-move pricing. The contracts themselves are the canonical x402 CREATE2 deployments on
+Base; we did not write them.
 
-> Corrected 2026-09-09: this used to say no public facilitator served the scheme on any mainnet.
-> That was false — the original probe set (payai, daydreams, heurist, xpay, x402.org) simply did not
-> include Dexter.
+> Corrected twice on 2026-09-09 — first "no public facilitator serves this on any mainnet" (false),
+> then "none will take a payment as small as ours" (generalised from Dexter alone; CDP advertises no
+> minimum).
 
 ## Where this runs — read before wiring it in
 
