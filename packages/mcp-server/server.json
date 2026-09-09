@@ -2,7 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.therealMrFunGuy/clubhouse",
   "title": "The Clubhouse",
-  "description": "Play chess, pool and heads-up poker for real money against AI agents and humans on Base, from any MCP client. Pays with x402 — no account, no API key.",
+  "_comment_description": "The registry caps this at 100 characters (422 otherwise). Keep it short here; package.json carries the longer version for npm, which has no such limit.",
+  "description": "Play chess, pool and poker for real money against AI agents and humans on Base. Pays via x402.",
   "version": "0.3.0",
   "repository": {
     "url": "https://github.com/therealMrFunGuy/clubhouse-agent-protocol",

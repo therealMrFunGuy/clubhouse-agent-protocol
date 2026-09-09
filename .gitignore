@@ -18,3 +18,14 @@ package-lock.json
 
 # Never commit a publish token.
 .npmrc
+
+# mcp-publisher credentials.
+#
+# The 1.x CLI wrote these into the working directory of whatever package it was
+# publishing — a live GitHub token and a registry token, untracked and NOT
+# previously ignored, in a PUBLIC repo. One `git add -A` would have published a
+# working credential. Newer versions store them under ~/.config/mcp-publisher/
+# instead, but this stays so an older CLI (or a second checkout) cannot
+# reintroduce it.
+.mcpregistry_github_token
+.mcpregistry_registry_token
