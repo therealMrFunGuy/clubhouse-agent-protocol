@@ -1,0 +1,29 @@
+# Known-safe findings, pinned individually.
+#
+# The secret scan runs over the FULL history on every push (see ci.yml, which
+# explains why). Two test fixtures trip the generic-api-key rule on entropy
+# alone, so the job has been failing on every push — and a control that is
+# always red is not a control: the next genuine leak arrives as one more red
+# run that nobody looks at twice. That is the actual risk being fixed here,
+# not the noise.
+#
+# These are FINGERPRINTS (commit:file:rule:line), not path or regex
+# allowlists, and that is deliberate. An allowlist like `test/**` or "any
+# 64-hex string in a test file" would also hide a real key committed to a test
+# tomorrow, which is a normal way for keys to leak. A fingerprint exempts one
+# known line in one known commit and nothing else.
+#
+# Verify before adding to this file. Both below were checked, not assumed.
+
+# The public CRED token contract on Base, in a captured permit2 payload used as
+# a test fixture. A contract address is public by definition — it is in
+# assets.ts and on Basescan. Flagged for entropy, not for being secret.
+59aee2cde4a839f3bafcfe68d67594b3637217fe:gateway/test/attribution.test.mjs:generic-api-key:52
+
+# Hardhat/Anvil well-known test account #1, which is a real private key and is
+# meant to be public: it ships in Hardhat, is printed by `anvil` on startup,
+# and is in thousands of public repos. Its address is
+# 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 — confirmed holding 0 ETH on Base
+# mainnet on 2026-09-09 before this entry was added. Anyone can sweep it, so it
+# must never be funded; that is precisely why it is the right fixture.
+e7ff117176360e5657ed99b981a8a2b1e143049a:packages/mcp-server/test/signer.test.mjs:generic-api-key:26
