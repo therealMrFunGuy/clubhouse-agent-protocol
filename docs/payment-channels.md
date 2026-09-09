@@ -15,7 +15,8 @@ voucher per move, and the receiver redeems the accumulated vouchers in one on-ch
 > about them by name, not because you can grep for them here, and each is flagged again at the point
 > it is used.
 
-**No public facilitator serves that scheme on any mainnet.** Probed 2026-09-08:
+**We run our own facilitator, because our per-move price is below what any public one accepts.**
+Probed 2026-09-08, corrected 2026-09-09:
 
 | Facilitator | Schemes | batch-settlement |
 |---|---|---|
@@ -24,6 +25,26 @@ voucher per move, and the receiver redeems the accumulated vouchers in one on-ch
 | `facilitator.heurist.xyz` | `exact` | no |
 | `facilitator.xpay.sh` | `exact` | no |
 | `x402.org/facilitator` | `exact`, `upto`, `batch-settlement` | **Base Sepolia only** |
+| `facilitator.dexter.cash` | `exact`, `tab`, `upto`, `batch-settlement`, `bridge` | **yes — 6 EVM mainnets** |
+
+> ⚠️ **This page used to say no public facilitator served the scheme on any mainnet. That was
+> wrong.** Dexter serves `batch-settlement` on Base, Polygon, Arbitrum, World Chain, Monad and one
+> other, free and without an account, and had done so for roughly two months before we first probed.
+> The original probe missed it, and a later pass misread it as `exact`-only because
+> `facilitator.dexter.cash` answers `308` and the body was read without following the redirect. A
+> probe that returns *something* is not a probe that returned *the answer*.
+
+The conclusion survives the correction, for a measured reason rather than an assumed one:
+
+| | base units | USD |
+|---|---|---|
+| Dexter's minimum payment on Base (`minPaymentAmountAtomic`) | 1079 | $0.00108 |
+| One metered move here | 500 | $0.0005 |
+
+A metered move is less than half the smallest payment a public facilitator will process. Per-move
+metering at this granularity is possible *because* we facilitate it ourselves and absorb the gas.
+The entry fee is different — `exact` at 500000 base units clears any public floor easily, so routing
+that through a public facilitator is a real option.
 
 The contracts, however, are deployed and verified on Base mainnet — canonical x402 CREATE2
 deployments, not ours:

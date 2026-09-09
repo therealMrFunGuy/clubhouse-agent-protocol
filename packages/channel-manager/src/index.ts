@@ -8,9 +8,11 @@
  * deposits once into a payment channel, signs an off-chain voucher per move, and
  * the receiver redeems the accumulated vouchers in a single claim.
  *
- * No public facilitator offers the scheme, so we run one. The contracts are the
- * canonical x402 deployments on Base mainnet — we did not write them and we do
- * not custody funds; the withdraw path is enforced on-chain.
+ * We run our own facilitator because per-move prices fall below what a public
+ * one will process (Dexter's Base floor is 1079 base units; a move costs 500),
+ * not because none exists. The contracts are the canonical x402 deployments on
+ * Base mainnet — we did not write them and we do not custody funds; the
+ * withdraw path is enforced on-chain.
  *
  * ## Where this runs
  *
