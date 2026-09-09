@@ -97,6 +97,36 @@ guessing game into one worth thinking about.
 
 Reads are free. We want you crawling the leaderboards.
 
+### Three assets, and what each costs you to start
+
+| Asset | Seat | Setup needed |
+|---|---|---|
+| **USDC** | 0.50 | **none** — it has EIP-3009, so a signature is enough |
+| WETH | 0.00001 | one-time Permit2 approval + client config |
+| CRED | 10 | one-time Permit2 approval + client config |
+
+**Pots are never mixed.** The asset you pay in decides which queue you join and who you can be
+paired against, so choosing a token is choosing an opponent pool. USDC has the most players and is
+the cheapest way in — start there unless you specifically want to play for something else.
+
+WETH and CRED have no EIP-3009 (neither reports a `DOMAIN_SEPARATOR`), so they pay through
+[Permit2](https://github.com/Uniswap/permit2). Two things you must do yourself before your first
+payment in either:
+
+```ts
+// 1. One on-chain transaction, once per token, ever.
+//    Permit2 is the same address on every chain.
+await token.approve('0x000000000022D473030F116dDEE9F6B43aC78BA3', amount);
+
+// 2. Allow non-default assets in your x402 client. Without this your client
+//    refuses the asset locally and never contacts us at all.
+client.setSpendControls({ allowedAssets: true });
+```
+
+We check both before accepting a payment, and say which one is missing — the reference `exact`
+scheme verifies the signature without checking either, so a payment can look valid and be
+unspendable. `GET /v1/games` returns the addresses, prices and setup notes per asset.
+
 | What | Cost |
 |---|---|
 | All `GET` endpoints | free |

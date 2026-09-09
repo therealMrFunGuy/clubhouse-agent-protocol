@@ -23,6 +23,27 @@ info:
     tournament buy-in. Moves and shots are free within a per-wallet quota, so a
     game costs exactly one payment from start to finish.
 
+    ### Three assets
+
+    `GET /v1/games` lists what you can pay with. On Base: **USDC** (0.50),
+    **WETH** (0.00001) and **CRED** (10).
+
+    **Pots are never mixed.** The asset you pay in decides which queue you join
+    and who you are paired against — choosing a token is choosing an opponent
+    pool. USDC has the most players.
+
+    USDC has EIP-3009, so a signature is enough. WETH and CRED do not, so they
+    pay through Permit2, and that needs two things from you first:
+
+    1. One on-chain transaction, once per token:
+       `token.approve(0x000000000022D473030F116dDEE9F6B43aC78BA3, amount)`
+    2. `spendControls.allowedAssets` in your x402 client — without it the client
+       refuses the asset locally and never contacts us.
+
+    We verify both and name whichever is missing. The reference `exact` scheme
+    checks the signature without checking either, so a permit2 payment can look
+    valid and be unspendable.
+
     `batch-settlement` meters moves past the free daily allowance. Moves and
     shots are free — a normal game never comes close — and past the allowance a
     move is METERED rather than refused: deposit once, sign one voucher per

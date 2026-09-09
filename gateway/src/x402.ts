@@ -117,17 +117,19 @@ export const PAYABLE_ASSETS: Record<string, PayableAsset[]> = {
       seatPrice: '0.00001',
       tournamentPrice: '0.0001',
       needsApproval: true,
-      enabled: false,
+      enabled: true,
     },
     {
       symbol: 'CRED',
       address: '0xFD1c03e25D061B0A810F129fb0C479f0A56942C6',
       decimals: 18,
+      // CRED's `name()` returns empty on Base, so this is ours to choose. Safe
+      // for the same reason as WETH's version below.
       domain: { name: 'CRED', version: '1' },
       seatPrice: '10',
       tournamentPrice: '100',
       needsApproval: true,
-      enabled: false,
+      enabled: true,
     },
   ],
   [NETWORK.polygonMainnet]: [
@@ -271,11 +273,20 @@ export function buildRoutes(env: Env) {
       // DOMAIN_SEPARATOR at all), so those must go through Permit2, whose
       // domain the library builds itself from the canonical collector address.
       assetTransferMethod: a.needsApproval ? 'permit2' : 'eip3009',
-      // Only meaningful for EIP-3009, where the signature is over the token's
-      // own domain. Read from the contract, never guessed: Base USDC reports
-      // "USD Coin"/"2", and "USDC" — the obvious guess — produces a signature
-      // the token rejects.
-      extra: a.needsApproval ? undefined : a.domain,
+      // ALWAYS present, even for permit2.
+      //
+      // For EIP-3009 this is load-bearing and must be exact: the signature is
+      // over the token's own domain, and Base USDC reports "USD Coin"/"2" —
+      // "USDC", the obvious guess, produces a signature the token rejects.
+      //
+      // For permit2 it is a client-side formality. The signature is over
+      // PERMIT2's domain, not the token's, and WETH has no `version()` and CRED
+      // no `name()` to read. But omitting it makes the client refuse outright
+      // with "EIP-712 domain parameters (name, version) are required", so a
+      // value has to be supplied. Verified empirically: a permit2 payment built
+      // with these synthetic values passes our facilitator's signature check,
+      // which it could not if the token domain were part of that signature.
+      extra: a.domain,
     }));
 
   return {
