@@ -7,31 +7,26 @@
  * instead of guessing from match results.
  *
  *   node bench.mjs
+ *
+ * It imports `scoreOutcome` and `findBestShot` from agent.mjs rather than
+ * restating them. The previous version kept its own copy, which had already
+ * drifted: it scored a shot by looking at which balls fell, while the agent
+ * scored it by a different rule again — so the numbers printed here described
+ * a search nothing actually ran.
  */
 
-import { mkBall, rack8Ball, cueStart, simulateShot, groupOf } from '@goclubhouse/pool-sim';
+import { initPoolState } from '@goclubhouse/pool-sim';
+import {
+  scoreOutcome,
+  findBestShot,
+  CANDIDATES,
+  ANGLE_STEPS,
+  POWERS,
+  SPINS,
+} from './agent.mjs';
 
-// Same knobs as agent.mjs.
-const ANGLE_STEPS = 240;
-const POWERS = [0.25, 0.45, 0.65, 0.85];
-const SPINS = [0, -0.6, 0.6];
-
-function scoreShot(result, myGroup) {
-  const potted = result.balls.filter((b) => b.pocketed);
-  if (potted.some((b) => b.id === 8)) return -Infinity;
-  if (potted.some((b) => b.id === 0)) return -50;
-  let score = 0;
-  for (const b of potted) {
-    if (b.id === 0 || b.id === 8) continue;
-    const g = groupOf(b.id);
-    score += myGroup === null || g === myGroup ? 25 : -15;
-  }
-  return score;
-}
-
-const cue = cueStart();
-const table = [mkBall(0, cue.x, cue.y), ...rack8Ball().map((b) => mkBall(b.id, b.x, b.y))];
-const snapshot = JSON.stringify(table);
+const opening = initPoolState('pool8', 0);
+const snapshot = JSON.stringify(opening);
 
 const started = process.hrtime.bigint();
 const scored = [];
@@ -41,12 +36,10 @@ for (let i = 0; i < ANGLE_STEPS; i++) {
   for (const power of POWERS) {
     for (const spinSide of SPINS) {
       const shot = { angle, power, spinSide, spinVert: 0 };
-      const result = simulateShot(table, shot);
-      scored.push({
-        shot,
-        score: scoreShot(result, null),
-        potted: result.balls.filter((b) => b.pocketed).map((b) => b.id),
-      });
+      const outcome = scoreOutcome(opening, 'p1', shot);
+      if (!outcome) continue;
+      const last = outcome.played.state.lastShot;
+      scored.push({ shot, score: outcome.score, potted: last.pocketed, foul: last.foul });
     }
   }
 }
@@ -54,23 +47,40 @@ for (let i = 0; i < ANGLE_STEPS; i++) {
 const ms = Number(process.hrtime.bigint() - started) / 1e6;
 scored.sort((a, b) => b.score - a.score);
 
-console.log(`Searched ${scored.length} shots in ${ms.toFixed(0)}ms (${(ms / scored.length).toFixed(2)}ms each)\n`);
+console.log(
+  `Judged ${scored.length} shots in ${ms.toFixed(0)}ms (${(ms / scored.length).toFixed(2)}ms each)\n`,
+);
+
 console.log('Best opening shots:');
 for (const s of scored.slice(0, 5)) {
   const { angle, power, spinSide } = s.shot;
   console.log(
-    `  score ${String(s.score).padStart(4)}  angle ${angle.toFixed(3)}  power ${power}  ` +
-      `spin ${String(spinSide).padStart(4)}  potted [${s.potted}]`,
+    `  score ${s.score.toFixed(1).padStart(6)}  angle ${angle.toFixed(3)}  power ${power}  ` +
+      `spin ${String(spinSide).padStart(4)}  ${s.foul ? 'FOUL ' : '     '}potted [${s.potted}]`,
   );
 }
 
-const scratches = scored.filter((s) => s.potted.includes(0)).length;
+const fouls = scored.filter((s) => s.foul).length;
 const potters = scored.filter((s) => s.potted.some((id) => id !== 0)).length;
-console.log(`\n${potters} of ${scored.length} shots pot something; ${scratches} scratch.`);
+console.log(
+  `\n${potters} of ${scored.length} shots pot something; ${fouls} are fouls by the real rules.`,
+);
 
-// The property the whole approach rests on.
-if (JSON.stringify(table) !== snapshot) {
-  console.error('\nFAIL: the table was mutated — every candidate after the first was scored wrong.');
+// The property the whole approach rests on: applyShot deep-copies, so every
+// candidate is judged from the SAME position.
+if (JSON.stringify(opening) !== snapshot) {
+  console.error('\nFAIL: the state was mutated — every candidate after the first was judged wrong.');
   process.exit(1);
 }
-console.log('Table unchanged after the search — candidates were all scored from the same position.');
+console.log('State unchanged after the search — candidates were all judged from the same position.');
+
+// And the search itself agrees with the sweep above.
+const best = findBestShot(opening, 'p1');
+if (!best || CANDIDATES !== scored.length) {
+  console.error('\nFAIL: findBestShot and this sweep disagree about the candidate set.');
+  process.exit(1);
+}
+console.log(
+  `findBestShot picked angle ${best.shot.angle.toFixed(3)} power ${best.shot.power} ` +
+    `(score ${best.score.toFixed(1)}).`,
+);

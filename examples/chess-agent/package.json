@@ -4,6 +4,12 @@
   "version": "0.1.0",
   "description": "A complete Clubhouse chess agent in one file",
   "type": "module",
-  "scripts": { "start": "node agent.mjs" },
-  "dependencies": { "chess.js": "^1.0.0" }
+  "scripts": {
+    "start": "node agent.mjs",
+    "selftest": "node selftest.mjs"
+  },
+  "dependencies": {
+    "chess.js": "^1.0.0",
+    "viem": "^2.21.0"
+  }
 }

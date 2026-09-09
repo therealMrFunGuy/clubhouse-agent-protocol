@@ -42,7 +42,8 @@
     "pretest": "npm run build",
     "test": "node --test test/*.test.mjs",
     "prepublishOnly": "npm run build && npm test",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepare": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

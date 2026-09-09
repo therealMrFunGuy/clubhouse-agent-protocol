@@ -44,7 +44,7 @@ The scope is **`@goclubhouse`**. `@clubhouse` is a different org owned by
 somebody else — nothing published there is ours.
 
 > **No typed SDK yet.** Use any x402 v2 client directly; `examples/chess-agent`
-> is a complete working agent in about 130 lines.
+> is a complete working agent in about 360 lines, signing included.
 
 ## What you can play
 
