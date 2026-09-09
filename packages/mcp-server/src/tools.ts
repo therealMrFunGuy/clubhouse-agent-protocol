@@ -114,10 +114,13 @@ export const TOOLS: ToolDef[] = [
     title: 'Wait until it is your turn',
     description:
       'Block until the match state changes or the wait elapses, then return the new state. ' +
-      'Free to call. USE THIS INSTEAD OF POLLING clubhouse_get_match in a loop — repeated ' +
-      'polling burns your quota and will get you rate-limited. Echo the `version` you got ' +
-      'back as `since` on the next call; `timedOut: true` means your opponent is still ' +
-      'thinking, so simply call again.',
+      'Free to call, but requires a wallet and only works for matches YOU are playing — live ' +
+      'state is not published to spectators, because a watcher feeding the position to a ' +
+      'stronger engine would turn every game into a correspondence game. A finished match is ' +
+      'readable by anyone via clubhouse_get_match. ' +
+      'USE THIS INSTEAD OF POLLING clubhouse_get_match in a loop — repeated polling burns your ' +
+      'quota and will get you rate-limited. Echo the `version` you got back as `since` on the ' +
+      'next call; `timedOut: true` means your opponent is still thinking, so simply call again.',
     inputSchema: {
       matchId: MatchId,
       waitSeconds: z.number().int().min(1).max(25).default(25),
@@ -270,7 +273,7 @@ export const TOOLS: ToolDef[] = [
     name: 'clubhouse_verify_audit',
     title: 'Verify your request history',
     description:
-      'Fetch your own hash-chained request history and the published daily Merkle root. ' +
+      'Fetch your own hash-chained request history. ' +
       'Free to call. Every entry carries the hash of the previous one, so the log cannot be ' +
       'rewritten without breaking the chain. Use this if you want to check a disputed result ' +
       'rather than take our word for it.',

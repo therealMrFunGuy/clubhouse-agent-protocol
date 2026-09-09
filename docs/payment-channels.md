@@ -3,6 +3,18 @@
 Per-move metering uses x402's `batch-settlement` scheme: an agent deposits once, signs an off-chain
 voucher per move, and the receiver redeems the accumulated vouchers in one on-chain claim.
 
+> **Which half of the system this describes.** The channel manager needs Redis, chain access and a
+> signing key, so it runs on the **private origin**, not on the edge Worker. What is open here is
+> [`packages/channel-manager`](../packages/channel-manager): the manager wiring, the claim-ceiling
+> breaker (`selectWithinCeiling`), the `AuthorizerSigner` interface with its local and remote
+> implementations, and `claimsOnly` — the wrapper that refuses to sign a refund. Those you can
+> install, read and run.
+>
+> Two functions named below are **origin-side and not in this repository**:
+> `keySeparationFailures` and the claim job's `selectRefundChannels`. They are named so you can ask
+> about them by name, not because you can grep for them here, and each is flagged again at the point
+> it is used.
+
 **No public facilitator serves that scheme on any mainnet.** Probed 2026-09-08:
 
 | Facilitator | Schemes | batch-settlement |
@@ -27,9 +39,11 @@ one is to be one.
 
 ## The three keys
 
-They must be **three separate keys**, and startup refuses to report ready if any two are the same —
-see `keySeparationFailures`. This is checked at readiness rather than at claim time, because by then
-the vouchers are already taken.
+They must be **three separate keys**, and startup refuses to report ready if any two are the same.
+The check is `keySeparationFailures`, on the private origin — not in this repository. It runs at
+readiness rather than at claim time, because by claim time the vouchers are already taken. What you
+can observe from outside is its verdict: `GET /v1/status` reports metering as not ready, and names
+what is wrong.
 
 | Role | Holds | Signs | Env |
 |---|---|---|---|
@@ -63,10 +77,31 @@ So:
 
 > **The authorizer is refused the ability to sign `Refund`, in code.**
 
-Not by configuration — there is no flag. `claimsOnly()` throws before the request reaches whatever
-holds the key, so even a compromised process cannot obtain a refund signature from a signing service
-that would otherwise have produced one. It is an allow-list (`ClaimBatch`), so a message type the
-contract gains later is refused until somebody deliberately allows it.
+Not by configuration — there is no flag. `claimsOnly()` wraps the signer and throws before the
+request reaches whatever holds the key, so even a compromised process cannot obtain a refund
+signature from a signing service that would otherwise have produced one. It is an allow-list
+(`ClaimBatch`), so a message type the contract gains later is refused until somebody deliberately
+allows it.
+
+`claimsOnly` is in
+[`packages/channel-manager/src/signer.ts`](../packages/channel-manager/src/signer.ts), in this
+repository, and **both** signers that package exports — local and remote — are wrapped in it before
+they are returned. There is no constructor option to disable it: a flag that allows refunds is a
+flag somebody sets at 2am to unstick something.
+
+That location matters and was wrong until recently. This document, and the README, stated as fact
+that the authorizer is refused by code rather than by policy — which was true of the private
+platform repo and false of the package anybody can actually install and audit. A control a
+researcher can neither see nor run is not a control. Install the package, hand a `Refund` to either
+signer, and watch it throw `RefundRefused` before a socket is opened or a bearer token leaves the
+process.
+
+One rough edge: `claimsOnly` and `RefundRefused` are not re-exported from the package entry point,
+so you get the behaviour through the signer factories but cannot import the wrapper by name or catch
+the error by its class. Read `packages/channel-manager/src/signer.ts` directly to audit it.
+
+The private origin wraps its own authorizer in the same function. If a finding turns on the origin
+side specifically, say so in the report and we will answer about it directly.
 
 If you later put this key behind a KMS, give it the same policy there. This stays as the backstop.
 
@@ -118,9 +153,13 @@ Two bounds worth knowing:
   step that moves money, so if a bug or an attack inflates what we believe is owed, the loss is a
   number chosen in advance. Deferred channels are claimed next run; their vouchers stay valid and
   nothing is forfeited. Hitting the ceiling logs loudly — it means either real growth, which you
-  raise deliberately, or something wrong.
-- **Refunds are never selected.** `selectRefundChannels` returns nothing, always, so the authorizer
-  is never asked for a signature it would refuse.
+  raise deliberately, or something wrong. The selection function that applies it, `selectWithinCeiling`,
+  **is** in this repository — [`packages/channel-manager/src/breaker.ts`](../packages/channel-manager/src/breaker.ts),
+  with its tests — so the arithmetic of the bound is readable and auditable in full.
+- **Refunds are never selected.** The claim job's `selectRefundChannels` returns nothing, always, so
+  the authorizer is never asked for a signature it would refuse. That job is **origin-side and not
+  in this repository**; it is the belt to `claimsOnly`'s braces, and `claimsOnly` is the half you
+  can audit.
 
 ## ⚠️ Facilitators disagree about permit2
 
@@ -135,16 +174,28 @@ signed by a wallet holding nothing:
 
 The same probe on the USDC/EIP-3009 path has all three refusing correctly, so
 **the path running in production today is sound.** The disagreement is specific
-to permit2, which payai evidently does not validate.
+to permit2.
 
-payai is the gateway's default facilitator. Enabling a permit2 asset while
-pointed at it would grant seats for payments that never settle — recoverable,
-since a failed settlement voids the seat and keeps it out of the pot, but a
-free-seat griefing vector and constant churn for nothing.
+The first reading of that table was "payai is broken". It is not. Our own
+facilitator runs the same reference `ExactEvmScheme` and returns the same
+answer, so this is the library: **permit2 verification checks the signature and
+does not check that the payer can pay.** xpay adds its own check on top, which is
+what made a shared gap look like a disagreement.
 
-**So: if WETH or CRED are ever enabled, the facilitator must be one that
-demonstrably validates permit2.** Re-probe rather than trusting this table; it
-describes somebody else's service on one particular day.
+Two things have changed since, and this section used to describe neither:
+
+- **The gateway no longer defaults to payai.** It builds its own facilitator and
+  passes it to `getPaymentServer`; a public one is used only when
+  `X402_FACILITATOR_URL` is set, which is the escape hatch for taking ours out of
+  the loop in a hurry. See `getPaymentServer` in `gateway/src/x402.ts`.
+- **WETH and CRED are enabled**, not pending. The gap above is closed on the
+  origin side by an explicit on-chain read of the payer's balance and Permit2
+  allowance before a permit2 payment is accepted, with a refusal that names which
+  of the two is missing. That closes the free-seat case; it does not close the
+  verify/settle race, which settlement reporting absorbs.
+
+Re-probe rather than trusting this table: it describes somebody else's service on
+one particular day.
 
 Two further frictions found the same way, both client-side:
 

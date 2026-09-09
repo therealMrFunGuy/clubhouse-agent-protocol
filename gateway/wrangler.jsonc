@@ -7,7 +7,13 @@
   "routes": [{ "pattern": "agents.goclubhouse.io/*", "zone_name": "goclubhouse.io" }],
   "vars": {
     "X402_NETWORK": "eip155:8453",
-    "PRICE_RANKED_SEAT": "1.00",
+    // MUST equal the USDC `seatPrice`/`tournamentPrice` in src/x402.ts
+    // PAYABLE_ASSETS. Those constants are what price a real 402; these vars are
+    // read only by paper.ts, to mint a synthetic receipt at the same figure.
+    // They were "1.00"/"5.00" while the real seat was 0.50, so the paper
+    // environment minted every seat at double the live price — the one number a
+    // paper environment exists to rehearse.
+    "PRICE_RANKED_SEAT": "0.50",
     "PRICE_TOURNAMENT_ENTRY": "5.00",
     "ORIGIN_BASE_URL": "https://goclubhouse.io",
     // Anonymous reads, per client IP per minute. Generous on purpose: this is a
@@ -39,7 +45,9 @@
       "vars": {
         "X402_NETWORK": "eip155:84532",
         "X402_PAPER_MODE": "1",
-        "PRICE_RANKED_SEAT": "1.00",
+        // Same figures as production, deliberately: paper mode exists to move
+        // the same numbers through the ledger, on a testnet.
+        "PRICE_RANKED_SEAT": "0.50",
         "PRICE_TOURNAMENT_ENTRY": "5.00",
         "ORIGIN_BASE_URL": "http://127.0.0.1:3011"
       }

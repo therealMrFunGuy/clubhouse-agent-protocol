@@ -37,7 +37,18 @@ import { RedisChannelStorage } from '@x402/evm/batch-settlement/server/redis-sto
 import type { AuthorizerSigner } from './signer.js';
 import { selectWithinCeiling, type BreakerState } from './breaker.js';
 
-export { localAuthorizerSigner, remoteAuthorizerSigner, type AuthorizerSigner } from './signer.js';
+export {
+  localAuthorizerSigner,
+  remoteAuthorizerSigner,
+  // Re-exported from the root because the docs invite researchers to check this
+  // control, and a deep import into ./signer.js is not something a reader of
+  // the README would guess.
+  claimsOnly,
+  RefundRefused,
+  ALLOWED_PRIMARY_TYPES,
+  REFUSED_PRIMARY_TYPES,
+  type AuthorizerSigner,
+} from './signer.js';
 export { selectWithinCeiling, owedBy, type ClaimCandidate, type BreakerState } from './breaker.js';
 export { createFacilitatorService, type FacilitatorServiceOptions } from './facilitator.js';
 

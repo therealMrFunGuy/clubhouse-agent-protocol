@@ -37,9 +37,29 @@
  * `primaryType: "Refund"` outright. That single restriction is worth more than
  * everything else in this file, because it is what makes the claim-path bound
  * the real bound rather than a partial one.
+ *
+ * ## The refusal is in this file, not only in our deployment
+ *
+ * It used to be described here and implemented somewhere else. Our public
+ * write-ups state, as fact, that the authorizer "is refused the ability to sign
+ * a refund — not by policy, but by code that never reaches the key". That was
+ * true of the private platform repo and false of the package you are reading,
+ * which is the one anybody can actually install and audit. A claim a researcher
+ * can neither see nor run is not a control; it is marketing.
+ *
+ * So {@link claimsOnly} lives here now, and BOTH signers below are wrapped in
+ * it before they are returned. There is no constructor option to turn it off —
+ * a flag to allow refunds is a flag somebody sets at 2am to unstick something,
+ * and the whole point is that no such lever exists.
  */
 
 import type { TypedData } from 'viem';
+
+/** The only EIP-712 message an authorizer built here will ever sign. */
+export const ALLOWED_PRIMARY_TYPES: ReadonlySet<string> = new Set(['ClaimBatch']);
+
+/** Refused unconditionally. See the header — this is the whole control. */
+export const REFUSED_PRIMARY_TYPES: ReadonlySet<string> = new Set(['Refund']);
 
 export interface AuthorizerSigner {
   address: `0x${string}`;
@@ -51,20 +71,66 @@ export interface AuthorizerSigner {
   }): Promise<`0x${string}`>;
 }
 
+/** Thrown when something asks the authorizer for the one signature it must never give. */
+export class RefundRefused extends Error {
+  constructor(primaryType: string) {
+    super(
+      `The channel authorizer refuses to sign "${primaryType}". ` +
+        'refundWithSignature carries no payer signature, so a key that can sign it ' +
+        'can empty every channel. Agents withdraw through the contract instead.',
+    );
+    this.name = 'RefundRefused';
+  }
+}
+
+/**
+ * Wrap a signer so it can only ever sign a claim.
+ *
+ * An allow-list, not a deny-list. A message type the contract gains later must
+ * be refused until somebody deliberately allows it, rather than signed because
+ * nobody thought to add it to a list of dangerous ones.
+ *
+ * The check runs before the wrapped signer is touched at all, which is what
+ * makes it meaningful for {@link remoteAuthorizerSigner}: a refused request
+ * never becomes a request. No socket is opened, no bearer token leaves the
+ * process, and nothing reaches whatever is holding the key.
+ */
+export function claimsOnly(inner: AuthorizerSigner): AuthorizerSigner {
+  return {
+    address: inner.address,
+    async signTypedData(params) {
+      if (REFUSED_PRIMARY_TYPES.has(params.primaryType)) {
+        throw new RefundRefused(params.primaryType);
+      }
+      if (!ALLOWED_PRIMARY_TYPES.has(params.primaryType)) {
+        throw new Error(
+          `The channel authorizer will not sign the unrecognised type "${params.primaryType}". ` +
+            `Allowed: ${[...ALLOWED_PRIMARY_TYPES].join(', ')}.`,
+        );
+      }
+      return inner.signTypedData(params);
+    },
+  };
+}
+
 /**
  * Adapt a viem account into an `AuthorizerSigner`.
  *
  * For the paper environment and local development. In production prefer
  * {@link remoteAuthorizerSigner} so the key stays outside this process.
+ *
+ * Wrapped in {@link claimsOnly}: this is the variant that holds the raw key in
+ * process, so it is the one where an unguarded `Refund` would be signed
+ * instantly and irreversibly.
  */
 export function localAuthorizerSigner(account: {
   address: `0x${string}`;
   signTypedData: (args: never) => Promise<`0x${string}`>;
 }): AuthorizerSigner {
-  return {
+  return claimsOnly({
     address: account.address,
     signTypedData: (params) => account.signTypedData(params as never),
-  };
+  });
 }
 
 export interface RemoteSignerConfig {
@@ -78,18 +144,39 @@ export interface RemoteSignerConfig {
 }
 
 /**
+ * EIP-712 uint fields arrive as `bigint` — `signClaimBatch` builds
+ * `maxClaimableAmount` and `totalClaimed` with `BigInt()` — and `JSON.stringify`
+ * throws outright on one ("Do not know how to serialize a BigInt"), which meant
+ * this signer failed before it ever opened a socket.
+ *
+ * Decimal strings are the right wire form: JSON has no integer type wide enough
+ * for a uint128, and viem accepts a decimal string, a number and a bigint
+ * interchangeably, producing a byte-identical signature for all three.
+ */
+function bigintsAsDecimalStrings(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value;
+}
+
+/**
  * An `AuthorizerSigner` backed by an external signing service.
  *
  * The signing service is expected to enforce its own policy — rate, amount
- * ceilings, an audit trail — so that compromising this process is not the same
- * as compromising the key.
+ * ceilings, an audit trail, and above all a pinned EIP-712 domain — so that
+ * compromising this process is not the same as compromising the key. Note what
+ * that implies about the request below: `domain` and `types` are sent by a
+ * caller, so a signing service that trusts them has delegated the choice of
+ * what the signature MEANS to the process it is defending against. It should
+ * pin both and treat this body as a request, not an instruction.
+ *
+ * Wrapped in {@link claimsOnly}, so a refused type never becomes an HTTP
+ * request.
  */
 export function remoteAuthorizerSigner(config: RemoteSignerConfig): AuthorizerSigner {
   if (!/^https:\/\//.test(config.url) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(config.url)) {
     throw new Error(`Remote signer must use HTTPS (or loopback), got: ${config.url}`);
   }
 
-  return {
+  return claimsOnly({
     address: config.address,
     async signTypedData(params) {
       const controller = new AbortController();
@@ -101,7 +188,7 @@ export function remoteAuthorizerSigner(config: RemoteSignerConfig): AuthorizerSi
             'content-type': 'application/json',
             authorization: `Bearer ${config.token}`,
           },
-          body: JSON.stringify({ address: config.address, ...params }),
+          body: JSON.stringify({ address: config.address, ...params }, bigintsAsDecimalStrings),
           signal: controller.signal,
         });
 
@@ -128,5 +215,5 @@ export function remoteAuthorizerSigner(config: RemoteSignerConfig): AuthorizerSi
         clearTimeout(timer);
       }
     },
-  };
+  });
 }

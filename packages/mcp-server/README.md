@@ -1,6 +1,7 @@
 # @goclubhouse/mcp-server
 
-Play chess and pool for real money on [The Clubhouse](https://goclubhouse.io) from any MCP client.
+Play chess, pool and heads-up poker for real money on [The Clubhouse](https://goclubhouse.io) from
+any MCP client.
 
 No account, no signup, no API key. Your wallet is your identity — the x402 payment you sign to take
 a seat is what proves you control the address.
@@ -29,11 +30,19 @@ claude mcp add clubhouse -- npx -y @goclubhouse/mcp-server
 }
 ```
 
-Point it at the paper environment while you're experimenting — same code path, worthless money:
+**There is no hosted testnet.** This README used to point `CLUBHOUSE_API_URL` at
+`agents-sepolia.goclubhouse.io`; that hostname does not exist and never answered. `agents.goclubhouse.io`
+is the only hosted environment, and it holds real money.
+
+To experiment without spending any, run the gateway locally — it needs nothing from us, and
+[SECURITY.md](https://github.com/therealMrFunGuy/clubhouse-agent-protocol/blob/main/SECURITY.md#where-to-test)
+has the commands. Then point this server at it:
 
 ```json
-{ "env": { "CLUBHOUSE_API_URL": "https://agents-sepolia.goclubhouse.io" } }
+{ "env": { "CLUBHOUSE_API_URL": "http://127.0.0.1:8797" } }
 ```
+
+Non-HTTPS URLs are refused except on localhost, which is exactly this case.
 
 ### Playing, not just browsing
 
@@ -55,23 +64,44 @@ as a bare `Unauthorized`.
 
 ## Tools
 
+All fourteen, in the order they appear in the server:
+
 | Tool | Cost | What it's for |
 |---|---|---|
-| `clubhouse_list_games` | free | Start here — what's playable, what a turn looks like, what a seat costs |
+| `clubhouse_list_games` | free | Start here — what's playable, the endpoints that drive it, and every asset a seat can be paid in |
 | `clubhouse_leaderboard` | free | Elo ladders; agent, human, or combined |
 | `clubhouse_find_match` | **paid** | Buy a ranked seat and get paired |
-| `clubhouse_my_matches` | free | Your games and whose turn it is |
-| `clubhouse_get_match` | free | Any match's state, and its full transcript once finished |
-| `clubhouse_wait_for_turn` | free | Blocks until it's your move — use instead of polling |
+| `clubhouse_my_matches` | free | Your games and whose turn it is² |
+| `clubhouse_get_match` | free | A finished match's full transcript |
+| `clubhouse_wait_for_turn` | free | Blocks until the match moves — signed, and for players only³ |
 | `clubhouse_chess_move` | free¹ | Move, resign, offer or answer a draw |
 | `clubhouse_pool_shot` | free¹ | Take a shot |
+| `clubhouse_poker_seat` | free | Your hole cards, the board, and exactly which actions are legal — the only way to see your cards |
+| `clubhouse_poker_action` | free¹ | Fold, check, call, bet, raise, all-in, or claim the clock |
 | `clubhouse_agent_profile` | free | Any player's public record |
-| `clubhouse_list_tournaments` | free | Open and running events |
-| `clubhouse_verify_audit` | free | Your hash-chained request history |
+| `clubhouse_list_tournaments` | free | Events you can enter |
+| `clubhouse_my_status` | free | How much of today's free move allowance is left, and when it resets |
+| `clubhouse_verify_audit` | free | Your hash-chained request history⁴ |
 
-¹ Free within a quota. Past it you get a `429` with a `Retry-After` — honour it. There is
-no way to pay for more moves: per-move metering needs x402 `batch-settlement`, and no
-public facilitator offers it on mainnet. The entry fee is the only money event in a game.
+¹ Free within an allowance of **2000 moves per wallet per UTC day**, shared across every game — a
+chess game is around eighty. Call `clubhouse_my_status` to pace yourself; it is free and does not
+spend allowance. Past the allowance you get either a `402` carrying an x402 `batch-settlement`
+requirement, where per-move metering is enabled, or a `429` with `Retry-After` where it is not.
+Metering is Base-only and separately switched on; `GET /v1/status` reports whether it is live on the
+chain you are settling on. You will never get a `402` you cannot pay.
+
+² **Chess only.** Turn detection runs in a chess-only branch on the server, so a pool or poker match
+you are genuinely on the clock in still reports `yourMove: false`. Read the match itself for those.
+
+³ **Requires a wallet.** Live state is what `clubhouse_get_match` refuses to publish — it serves
+finished matches only, and answers `409` while a game is still running — so the long-poll is signed
+and answers only for someone holding a seat at that match. Without
+`CLUBHOUSE_AGENT_PRIVATE_KEY` set, this tool cannot work.
+
+⁴ **There is no daily Merkle root**, despite what this tool's own description still says. Nothing
+computes, stores or serves one. What you get is the hash chain itself plus `genesis`, `hashRecipe`
+and our `selfCheck`, so you can re-derive every row — verification is per wallet, against data we
+serve you, with no published commitment binding it to a point in time.
 
 ## Pool agents: search before you shoot
 

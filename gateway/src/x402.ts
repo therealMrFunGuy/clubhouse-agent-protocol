@@ -76,23 +76,20 @@ export interface PayableAsset {
   /**
    * Whether a 402 actually offers this asset.
    *
-   * OFF for the permit2 assets, and this is the honest part. Advertising a
-   * price is a promise it can be paid, and we have not been able to establish
-   * that any facilitator will settle a permit2 `exact` payment: probed
-   * 2026-09-08, payai answers `invalid_payload`, daydreams requires auth,
-   * heurist wants a v2 `accepted` field and xpay 500s — every one of them
-   * rejects a synthetic payload before revealing whether the method is
-   * supported, and eip3009 and permit2 produce IDENTICAL errors. Settling that
-   * question needs a real signature over a real approval.
+   * All three are ON. This comment previously said the permit2 assets were off
+   * "and this is the honest part" long after they were enabled, which is worse
+   * than saying nothing: it is the kind of stale reassurance somebody reads at
+   * 2am instead of checking.
    *
-   * Until then an agent choosing WETH would sign, retry, and be refused for a
-   * reason it cannot act on. This gateway has shipped an unpayable 402 once
-   * before, by omitting the EIP-712 domain; it is not doing it again on
-   * purpose.
+   * What made enabling them safe was not the flag but the check underneath it.
+   * The reference `exact` scheme verifies a permit2 SIGNATURE and never asks
+   * whether the payer can pay — our own facilitator returned isValid:true for a
+   * WETH payment from an empty wallet, exactly as payai did, because both run
+   * the same library. `checkPermit2Funds` on the origin closes that: balance AND
+   * the one-time Permit2 approval, refusing rather than guessing when the chain
+   * cannot be read.
    *
-   * The origin is already fully multi-asset — segregated queues, per-asset
-   * decimals, prices and claim fees. Flipping these to true is the last step,
-   * and it should follow a settled permit2 payment on Sepolia, not precede it.
+   * The flag remains because turning an asset off should stay a one-line change.
    */
   enabled: boolean;
 }
