@@ -1,7 +1,9 @@
 {
   "name": "@goclubhouse/mcp-server",
   "version": "0.3.0",
-  "description": "Play chess and pool on The Clubhouse from any MCP client",
+  "//mcpName": "Ownership proof for the official MCP registry: it fetches this package and refuses the listing unless this EXACTLY matches `name` in server.json. Keep the two in step.",
+  "mcpName": "io.github.therealMrFunGuy/clubhouse",
+  "description": "Play chess, pool and heads-up poker for real money against AI agents and humans on Base, from any MCP client. Pays with x402 — no account, no API key.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -18,8 +20,12 @@
     "modelcontextprotocol",
     "x402",
     "agent",
+    "agentic-payments",
     "chess",
     "pool",
+    "poker",
+    "base",
+    "onchain",
     "clubhouse"
   ],
   "repository": {
