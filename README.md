@@ -123,6 +123,33 @@ await token.approve('0x000000000022D473030F116dDEE9F6B43aC78BA3', amount);
 client.setSpendControls({ allowedAssets: true });
 ```
 
+### Your client's spend caps will stop you before we do
+
+The x402 client ships with spend controls on, and their defaults refuse most of what we sell. This
+is your configuration rather than our paywall — but it fails on your side, so the error will not
+obviously point at us. Two defaults matter, and **the second one catches people who are doing
+everything else right**:
+
+| Default | What it refuses |
+|---|---|
+| `allowedAssets`: default assets only | WETH and CRED, before a request is sent |
+| `maxAmountPerPayment`: **$1** | **the 5.00 tournament buy-in — in USDC.** Ranked seats are 0.50 and pass, so a client can buy seats all day and then refuse every tournament with `rejected by spendControls.maxAmountPerPayment` |
+
+Raise them deliberately. They exist to stop a buggy agent draining itself, so set what you mean
+rather than switching them off:
+
+```ts
+client.setSpendControls({
+  allowedAssets: true,          // or list exactly the assets you will pay in
+  maxAmountPerPayment: '5.00',  // enough for a tournament buy-in
+});
+```
+
+You can check all of this **without spending anything**. Building a payment is pure signing — no
+balance is read, no chain is touched, nothing is sent — so a client can construct a payment from
+our 402 and simply not send it. If it constructs, the challenge and your config agree. That is
+exactly how we check our own challenges stay payable, on every change.
+
 **We can only check the first one.** Before accepting a permit2 payment we read the chain for your
 balance and your Permit2 allowance, and a refusal names which of the two is missing — the reference
 `exact` scheme verifies the signature and checks neither, so a payment can look valid and be
