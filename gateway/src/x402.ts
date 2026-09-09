@@ -19,6 +19,7 @@ import {
   x402HTTPResourceServer,
   HTTPFacilitatorClient,
 } from '@x402/core/server';
+import { OriginFacilitatorClient } from './facilitatorClient';
 import { registerExactEvmScheme } from '@x402/evm/exact/server';
 import type { Env } from './types';
 
@@ -302,10 +303,27 @@ let cached: { server: x402HTTPResourceServer; ready: Promise<void> } | null = nu
 /** Build (once per isolate) and initialize the x402 resource server. */
 export async function getPaymentServer(env: Env): Promise<x402HTTPResourceServer> {
   if (!cached) {
-    const url = env.X402_FACILITATOR_URL ?? MAINNET_FACILITATORS[0];
-    const resourceServer = new x402ResourceServer(
-      new HTTPFacilitatorClient({ url, timeoutMs: 20_000 }),
-    );
+    // ── Our own facilitator, by default ────────────────────────────────────
+    //
+    // The public ones disagree about permit2 and the default was the one that
+    // gets it wrong: probed 2026-09-08, payai answered `isValid: true` for a
+    // permit2 payment from an empty wallet, while xpay correctly refused it.
+    // On the USDC/EIP-3009 path all of them are correct, so nothing in
+    // production was ever wrong — but a permit2 asset cannot be enabled while
+    // its validity rests on somebody else's broken check.
+    //
+    // This is not a loss of redundancy. The origin already has to be up for a
+    // seat to be granted, so a facilitator beside it cannot fail independently
+    // of what it gates; the public facilitator was never a fallback, it was a
+    // second thing that had to work.
+    //
+    // X402_FACILITATOR_URL still forces a public one, which is the escape
+    // hatch if ours ever needs taking out of the loop in a hurry.
+    const client = env.X402_FACILITATOR_URL
+      ? new HTTPFacilitatorClient({ url: env.X402_FACILITATOR_URL, timeoutMs: 20_000 })
+      : new OriginFacilitatorClient(env, chainIdFor(env.X402_NETWORK ?? NETWORK.baseMainnet));
+
+    const resourceServer = new x402ResourceServer(client as never);
     // Empty config registers the eip155:* wildcard, covering Base and Polygon.
     registerExactEvmScheme(resourceServer, {});
 
@@ -314,6 +332,13 @@ export async function getPaymentServer(env: Env): Promise<x402HTTPResourceServer
   }
   await cached.ready;
   return cached.server;
+}
+
+/** CAIP-2 → the origin's internal chain id. Mirrors origin.ts. */
+function chainIdFor(network: string): string {
+  if (network === NETWORK.baseSepolia) return 'base-sepolia';
+  if (network === NETWORK.polygonMainnet) return 'polygon';
+  return 'base-mainnet';
 }
 
 /** Minimal HTTPAdapter over the Workers `Request`. */
