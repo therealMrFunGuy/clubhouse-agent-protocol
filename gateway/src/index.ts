@@ -31,6 +31,7 @@ import {
 } from './x402';
 import { forwardToOrigin, chainIdForNetwork } from './origin';
 import { verifyAgentSignature } from './agentAuth';
+import { attributePayment } from './attribution';
 import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
 import { consumeEdgeQuota } from './quota';
 import { OriginFacilitatorClient } from './facilitatorClient';
@@ -502,9 +503,11 @@ export default {
       // met this gateway. `from` is the address that signed the transfer, which
       // is exactly the identity we want: proven by signature, not asserted.
       const payload = (result as any).paymentPayload ?? {};
-      const auth = payload.payload?.authorization ?? {};
-      const payer: string | null = auth.from ?? null;
-      const settlementNonce: string | null = auth.nonce ?? null;
+      // Both authorization shapes. `authorization` is EIP-3009; a permit2
+      // payment carries `permit2Authorization` with the payer and nonce in the
+      // same roles — see attribution.ts for why that distinction cost us every
+      // WETH and CRED payment.
+      const { payer, nonce: settlementNonce, flow } = attributePayment(payload);
 
       // ── The terms. SERVER-side only ─────────────────────────────────────
       //
@@ -531,7 +534,9 @@ export default {
       const amount = requirements.amount;
 
       if (!payer || !settlementNonce) {
-        console.error('[gateway] verified payment lacked payer or nonce — refusing');
+        console.error(
+          `[gateway] verified payment lacked payer or nonce (authorization shape: ${flow ?? 'unrecognised'}) — refusing`,
+        );
         return json({ error: 'Payment could not be attributed' }, 502);
       }
 
