@@ -298,12 +298,82 @@ export function buildRoutes(env: Env) {
         : a.domain,
     }));
 
+  // ── `extensions.bazaar`: how an agent finds us without being told ────────
+  //
+  // The CDP Bazaar is the discovery layer agents actually query — 14,562
+  // resources on 2026-09-09, indexing continuously (90 of a 100-item sample
+  // were under a day old). There is no submission form: a facilitator indexes
+  // a resource when a payment for it settles, reading the declaration below.
+  //
+  // We already emitted the `resource` descriptor. This is the missing half,
+  // and it was verified against a resource that IS indexed rather than from
+  // the docs — api.onesource.io publishes exactly this shape, alongside a
+  // `batch-settlement` option carrying its own receiverAuthorizer. Which is
+  // also the proof that the hybrid works: self-facilitate the metered scheme,
+  // and still be discoverable.
+  //
+  // The schemas are not decoration. A route that takes a body or a path
+  // parameter and declares neither is listed but uncallable — an agent has no
+  // way to construct a valid request, so the listing produces 404s instead of
+  // players. The tournament route is the sharp case: its id is in the PATH.
   return {
     'POST /v1/matchmaking/queue': {
       resource: 'https://agents.goclubhouse.io/v1/matchmaking/queue',
       description: 'Ranked seat on the Clubhouse agent ladder',
       mimeType: 'application/json',
       accepts: options((a) => a.seatPrice),
+      extensions: {
+        bazaar: {
+          info: {
+            input: {
+              type: 'http',
+              method: 'POST',
+              bodyFields: { game: 'chess', variant: 'live' },
+            },
+            output: {
+              type: 'json',
+              example: {
+                success: true,
+                status: 'queued',
+                game: 'chess',
+                asset: 'USDC',
+              },
+            },
+          },
+          schema: {
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+            type: 'object',
+            required: ['input'],
+            properties: {
+              input: {
+                type: 'object',
+                required: ['type', 'method', 'bodyFields'],
+                properties: {
+                  type: { const: 'http', type: 'string' },
+                  method: { const: 'POST', type: 'string' },
+                  bodyFields: {
+                    type: 'object',
+                    required: ['game'],
+                    additionalProperties: false,
+                    properties: {
+                      game: {
+                        type: 'string',
+                        enum: ['chess', 'pool8', 'pool9', 'poker'],
+                        description: 'Which game to queue for.',
+                      },
+                      variant: {
+                        type: 'string',
+                        description:
+                          'Game-specific. "live" or "async" for chess; omit for the default.',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
     'POST /v1/tournaments/*/join': {
       resource: 'https://agents.goclubhouse.io/v1/tournaments/join',
@@ -313,6 +383,53 @@ export function buildRoutes(env: Env) {
       // equality, not a floor, so a disagreement refuses every real payment —
       // the correct failure for a price that has drifted on a money route.
       accepts: options((a) => a.tournamentPrice),
+      extensions: {
+        bazaar: {
+          info: {
+            input: {
+              type: 'http',
+              method: 'POST',
+              // The id is in the PATH, not the body, and an agent that does not
+              // know that sends POST /v1/tournaments/join and gets a 404. The
+              // whole point of declaring a schema is that it can construct a
+              // valid call without reading our docs.
+              pathParams: { tournamentId: '1' },
+              bodyFields: {},
+            },
+            output: {
+              type: 'json',
+              example: { success: true, status: 'entered', tournamentId: 1 },
+            },
+          },
+          schema: {
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+            type: 'object',
+            required: ['input'],
+            properties: {
+              input: {
+                type: 'object',
+                required: ['type', 'method', 'pathParams'],
+                properties: {
+                  type: { const: 'http', type: 'string' },
+                  method: { const: 'POST', type: 'string' },
+                  pathParams: {
+                    type: 'object',
+                    required: ['tournamentId'],
+                    properties: {
+                      tournamentId: {
+                        type: 'string',
+                        description:
+                          'From GET /v1/tournaments. Only tournaments with agent_eligible accept an agent.',
+                      },
+                    },
+                  },
+                  bodyFields: { type: 'object', additionalProperties: false },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   };
 }
