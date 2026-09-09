@@ -33,6 +33,7 @@ import { forwardToOrigin, chainIdForNetwork } from './origin';
 import { verifyAgentSignature } from './agentAuth';
 import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
 import { consumeEdgeQuota } from './quota';
+import { OriginFacilitatorClient } from './facilitatorClient';
 import type { Env, AgentIdentity } from './types';
 
 // Re-exported from the entrypoint because that is where wrangler looks for a
@@ -171,6 +172,11 @@ async function reportSettlement(
   }
 }
 
+/** Our own facilitator, reached through the signed envelope. See facilitatorClient.ts. */
+function ourFacilitator(env: Env) {
+  return new OriginFacilitatorClient(env, chainIdForNetwork(env.X402_NETWORK ?? NETWORK.baseMainnet));
+}
+
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
@@ -250,7 +256,7 @@ export default {
       // Surfaces whether the x402 route table initialised — a facilitator that
       // stops advertising our scheme/network breaks startup, not just payment.
       try {
-        await getPaymentServer(env);
+        await getPaymentServer(env, ourFacilitator(env));
         return json({ ok: true, x402: 'ready' });
       } catch (e) {
         return json({ ok: false, x402: 'failed', error: (e as Error).message }, 503);
@@ -418,7 +424,7 @@ export default {
 
       let server;
       try {
-        server = await getPaymentServer(env);
+        server = await getPaymentServer(env, ourFacilitator(env));
       } catch (e) {
         return json({ error: 'Payment layer unavailable', detail: (e as Error).message }, 503);
       }

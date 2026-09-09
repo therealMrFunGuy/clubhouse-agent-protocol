@@ -19,7 +19,6 @@ import {
   x402HTTPResourceServer,
   HTTPFacilitatorClient,
 } from '@x402/core/server';
-import { OriginFacilitatorClient } from './facilitatorClient';
 import { registerExactEvmScheme } from '@x402/evm/exact/server';
 import type { Env } from './types';
 
@@ -298,10 +297,29 @@ export function buildRoutes(env: Env) {
   };
 }
 
+/**
+ * A facilitator this module does not construct.
+ *
+ * Deliberate: x402.ts is about prices and schemes, and the entrypoint is where
+ * dependencies get wired. It also keeps this file free of relative VALUE
+ * imports — `x402Version.test.mjs` imports it directly under node's TS
+ * type-stripping, where an extensionless relative import does not resolve, and
+ * the suite stopped loading the moment one was added.
+ */
+export interface FacilitatorLike {
+  verify(payload: unknown, requirements: unknown): Promise<unknown>;
+  settle(payload: unknown, requirements: unknown): Promise<unknown>;
+  getSupported(): Promise<unknown>;
+}
+
 let cached: { server: x402HTTPResourceServer; ready: Promise<void> } | null = null;
 
 /** Build (once per isolate) and initialize the x402 resource server. */
-export async function getPaymentServer(env: Env): Promise<x402HTTPResourceServer> {
+export async function getPaymentServer(
+  env: Env,
+  /** Ours, supplied by the entrypoint. Absent falls back to a public one. */
+  ownFacilitator?: FacilitatorLike,
+): Promise<x402HTTPResourceServer> {
   if (!cached) {
     // ── Our own facilitator, by default ────────────────────────────────────
     //
@@ -319,9 +337,13 @@ export async function getPaymentServer(env: Env): Promise<x402HTTPResourceServer
     //
     // X402_FACILITATOR_URL still forces a public one, which is the escape
     // hatch if ours ever needs taking out of the loop in a hurry.
-    const client = env.X402_FACILITATOR_URL
-      ? new HTTPFacilitatorClient({ url: env.X402_FACILITATOR_URL, timeoutMs: 20_000 })
-      : new OriginFacilitatorClient(env, chainIdFor(env.X402_NETWORK ?? NETWORK.baseMainnet));
+    const client =
+      env.X402_FACILITATOR_URL || !ownFacilitator
+        ? new HTTPFacilitatorClient({
+            url: env.X402_FACILITATOR_URL ?? MAINNET_FACILITATORS[0],
+            timeoutMs: 20_000,
+          })
+        : ownFacilitator;
 
     const resourceServer = new x402ResourceServer(client as never);
     // Empty config registers the eip155:* wildcard, covering Base and Polygon.
