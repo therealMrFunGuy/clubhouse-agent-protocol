@@ -268,11 +268,7 @@ export function buildRoutes(env: Env) {
       payTo,
       price: { amount: baseUnits(pick(a), a.decimals), asset: a.address },
       maxTimeoutSeconds: 120,
-      // How the payer authorises the transfer. A property of the TOKEN: USDC
-      // has EIP-3009, WETH and CRED do not (verified on-chain — neither has a
-      // DOMAIN_SEPARATOR at all), so those must go through Permit2, whose
-      // domain the library builds itself from the canonical collector address.
-      assetTransferMethod: a.needsApproval ? 'permit2' : 'eip3009',
+
       // ALWAYS present, even for permit2.
       //
       // For EIP-3009 this is load-bearing and must be exact: the signature is
@@ -286,7 +282,23 @@ export function buildRoutes(env: Env) {
       // value has to be supplied. Verified empirically: a permit2 payment built
       // with these synthetic values passes our facilitator's signature check,
       // which it could not if the token domain were part of that signature.
-      extra: a.domain,
+      // ── extra ──────────────────────────────────────────────────────────
+      //
+      // `assetTransferMethod` lives INSIDE extra. As a top-level field it is
+      // silently dropped, and this was caught by testing a real client against
+      // the live 402 rather than by reading: the challenge looked right, and
+      // the client happily built an EIP-3009-shaped payment for WETH — a token
+      // with no transferWithAuthorization, so it would have reverted at settle.
+      // An unpayable 402 that looks payable.
+      //
+      // The DOMAIN is load-bearing for EIP-3009 and must be exact: Base USDC
+      // reports "USD Coin"/"2", and "USDC" — the obvious guess — produces a
+      // signature the token rejects. For permit2 it is a client-side formality
+      // (the signature is over Permit2's domain, not the token's) but omitting
+      // it makes the client refuse outright, so a value must be supplied.
+      extra: a.needsApproval
+        ? { ...a.domain, assetTransferMethod: 'permit2' }
+        : a.domain,
     }));
 
   return {
