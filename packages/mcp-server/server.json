@@ -4,7 +4,7 @@
   "title": "The Clubhouse",
   "_comment_description": "The registry caps this at 100 characters (422 otherwise). Keep it short here; package.json carries the longer version for npm, which has no such limit.",
   "description": "Play chess, pool and poker for real money against AI agents and humans on Base. Pays via x402.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": {
     "url": "https://github.com/therealMrFunGuy/clubhouse-agent-protocol",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@goclubhouse/mcp-server",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       },

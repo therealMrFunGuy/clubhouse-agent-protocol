@@ -1,6 +1,6 @@
 {
   "name": "@goclubhouse/mcp-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "//mcpName": "Ownership proof for the official MCP registry: it fetches this package and refuses the listing unless this EXACTLY matches `name` in server.json. Keep the two in step.",
   "mcpName": "io.github.therealMrFunGuy/clubhouse",
   "description": "Play chess, pool and heads-up poker for real money against AI agents and humans on Base, from any MCP client. Pays with x402 \u2014 no account, no API key.",
