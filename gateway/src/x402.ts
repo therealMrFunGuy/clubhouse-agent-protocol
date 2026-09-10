@@ -376,7 +376,20 @@ export function buildRoutes(env: Env) {
       },
     },
     'POST /v1/tournaments/*/join': {
-      resource: 'https://agents.goclubhouse.io/v1/tournaments/join',
+      // ⚠️ The `:tournamentId` placeholder is load-bearing, not decoration.
+      //
+      // This used to advertise `/v1/tournaments/join`, which is not a route:
+      // every method against it answers 404. So the one URL we published for
+      // this resource was the one URL that could not be paid, and anything that
+      // probes an advertised resource before trusting it — the Bazaar crawler
+      // included — saw a dead endpoint.
+      //
+      // The placeholder form is the convention the indexed catalogue actually
+      // uses: of 100 sampled resources, 9 carry a path parameter and 9 of those
+      // 9 spell it `:name` in `resource` AND repeat it in
+      // `extensions.bazaar.routeTemplate` (api.onesource.io/api/chain/ens/:input
+      // is the reference we checked). We had neither half.
+      resource: 'https://agents.goclubhouse.io/v1/tournaments/:tournamentId/join',
       description: 'Buy-in to a Clubhouse agent tournament',
       mimeType: 'application/json',
       // MUST equal the origin's AGENT_PRICE_TOURNAMENT_BASE. That check is an
@@ -385,6 +398,9 @@ export function buildRoutes(env: Env) {
       accepts: options((a) => a.tournamentPrice),
       extensions: {
         bazaar: {
+          // The path template, alongside the placeholder in `resource`. Every
+          // path-parameterised resource in the indexed catalogue declares both.
+          routeTemplate: '/v1/tournaments/:tournamentId/join',
           info: {
             input: {
               type: 'http',

@@ -36,6 +36,7 @@ import { paperModeRequested, paperModeBlocker, paperReceipt } from './paper';
 import { consumeEdgeQuota } from './quota';
 import { OriginFacilitatorClient } from './facilitatorClient';
 import type { Env, AgentIdentity } from './types';
+import { isPaidRoute, allowedMethodsFor } from './pricedRoutes';
 
 // Re-exported from the entrypoint because that is where wrangler looks for a
 // Durable Object class named in `durable_objects.bindings`.
@@ -97,33 +98,6 @@ const SIGNED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
 
 function isSignedRoute(method: string, path: string): boolean {
   return SIGNED_ROUTES.some((r) => r.method === method && r.pattern.test(path));
-}
-
-/**
- * Routes that cost money. The real path also asks the x402 server whether a
- * route is priced, but that answer needs a live facilitator — so the set is
- * named here as well, and paper mode gates on it.
- *
- * Without this, the paper branch would mint a synthetic receipt for ANY POST
- * under /v1/, which is a paper environment that does not model the paywall it
- * exists to rehearse.
- */
-// Kept deliberately in step with buildRoutes() in x402.ts. An audit caught the
-// first version of this list claiming parity it did not have: it matched
-// /v1/matchmaking/<anything> while x402 priced only /v1/matchmaking/queue, and
-// it required a numeric tournament id while the spec types that id as a string.
-// The result was routes that were free in production and paid in paper, and
-// vice versa — a paper environment that rehearses the wrong paywall is worse
-// than none, because it produces confident green runs.
-const PAID_ROUTES: RegExp[] = [
-  /^\/v1\/matchmaking\/queue$/,
-  // Priced again: agent buy-ins and agent tournament prizes now share the same
-  // pot, so a bought seat is one the house can actually pay out on.
-  /^\/v1\/tournaments\/[^/]+\/join$/,
-];
-
-function isPaidRoute(path: string): boolean {
-  return PAID_ROUTES.some((p) => p.test(path));
 }
 
 /** Read endpoints are free and unauthenticated — discovery should not be taxed. */
@@ -636,6 +610,27 @@ export default {
           'x-cap-chain': chainIdForNetwork(network),
         },
       });
+    }
+
+    // A priced path asked for by the wrong method exists — say so, with the
+    // method that works, rather than denying the URL we advertise.
+    const allowed = allowedMethodsFor(request.method, path);
+    if (allowed) {
+      return new Response(
+        JSON.stringify({
+          error: 'Method not allowed',
+          allow: allowed,
+          spec: 'https://agents.goclubhouse.io/spec/openapi.yaml',
+        }),
+        {
+          status: 405,
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            allow: allowed.join(', '),
+            'access-control-allow-origin': '*',
+          },
+        },
+      );
     }
 
     return json({ error: 'Not found', spec: 'https://agents.goclubhouse.io/spec/openapi.yaml' }, 404);
