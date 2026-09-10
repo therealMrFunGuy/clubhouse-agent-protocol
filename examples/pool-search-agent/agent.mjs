@@ -161,7 +161,9 @@ async function call(method, path, body) {
         'A ranked seat is 0.50 USDC on Base (eip155:8453). WETH (0.00001) and CRED (10)\n' +
         'are also accepted, but both pay through Permit2 and need a one-time on-chain\n' +
         'approval plus spendControls.allowedAssets in your client — USDC needs neither.\n' +
-        'Wrap fetch with an x402 client (`wrapFetchWithPayment` from `x402-fetch`).',
+        'Pay it with the v2 client: @x402/core/client + @x402/evm/exact/client. ' +
+          'NOT x402-fetch — that is 1.x and this gateway returns 400 for a declared ' +
+          'v1 payload. See packages/mcp-server/src/payment.ts for a working payer.',
       null,
     );
   }

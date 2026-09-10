@@ -8,6 +8,7 @@
 
 import { neutraliseResponse, neutralise } from './untrusted.js';
 import type { AgentSigner } from './signer.js';
+import type { PaymentMaker } from './payment.js';
 
 export const DEFAULT_BASE_URL = 'https://agents.goclubhouse.io';
 
@@ -23,6 +24,15 @@ export interface ApiConfig {
    * fail with a 401 the caller can explain rather than a silent nothing.
    */
   signer?: AgentSigner | null;
+  /** Pays 402s. Absent means every paid route still refuses — see payment.ts. */
+  payer?: PaymentMaker | null;
+  /**
+   * The fetch to use. Injected ONLY so the payment path can be tested against
+   * a scripted server: the properties that matter there — that a 402 is paid
+   * exactly once, and never twice — are about how many requests go out, which
+   * cannot be asserted against the real network.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 export class PaymentRequiredError extends Error {
@@ -40,11 +50,15 @@ export class ClubhouseApi {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly signer: AgentSigner | null;
+  private readonly payer: PaymentMaker | null;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(config: ApiConfig = {}) {
     this.baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.timeoutMs = config.timeoutMs ?? 35_000;
     this.signer = config.signer ?? null;
+    this.payer = config.payer ?? null;
+    this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
   /** The wallet this client plays as, or null when only browsing. */
@@ -74,7 +88,7 @@ export class ClubhouseApi {
         Object.assign(headers, await this.signer.headersFor(method, path, wire));
       }
 
-      const res = await fetch(`${this.baseUrl}${path}`, {
+      const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method,
         headers,
         body: opts.body === undefined ? undefined : wire,
@@ -82,8 +96,43 @@ export class ClubhouseApi {
       });
 
       if (res.status === 402) {
+        // ── Pay it, once ──────────────────────────────────────────────────
+        //
+        // This is the step that did not exist. The 402 carries the price, the
+        // asset and the payee; the payer signs an authorisation for exactly
+        // that and we retry. USDC on Base has EIP-3009, so the signature moves
+        // the money and the facilitator submits the transaction — the agent
+        // spends no gas and needs no prior on-chain approval.
+        //
+        // EXACTLY ONE retry, and only when this attempt carried no payment.
+        // A loop here spends the operator's wallet one seat at a time against
+        // a server that answers 402 to everything; the recursion guard is the
+        // difference between a failed call and a drained wallet.
+        if (this.payer && !opts.paymentHeader) {
+          const payHeaders = await this.payer.headersFor((n) => res.headers.get(n));
+          if (payHeaders) {
+            const signature = payHeaders['PAYMENT-SIGNATURE'] ?? Object.values(payHeaders)[0];
+            return this.request<T>(method, path, { ...opts, paymentHeader: signature });
+          }
+          // Null means the challenge could not be satisfied — over the spend
+          // cap, an asset this wallet may not spend, or a scheme this client
+          // does not implement. Say so, rather than reporting "payment
+          // required" to an operator who has already funded the wallet.
+          throw new PaymentRequiredError(
+            'Payment required, and this challenge could not be paid: it is over ' +
+              'CLUBHOUSE_MAX_PAYMENT_USD, names an asset this wallet may not spend, ' +
+              'or uses a scheme this client does not implement.',
+            res.headers.get('PAYMENT-REQUIRED'),
+          );
+        }
+
         throw new PaymentRequiredError(
-          'Payment required. Fund this call from a wallet holding USDC on Base.',
+          this.payer
+            ? 'Payment required. The payment was signed and still refused — the ' +
+                'wallet may be short of USDC on Base, or the price changed between ' +
+                'the challenge and the retry.'
+            : 'Payment required. Set CLUBHOUSE_AGENT_PRIVATE_KEY to a Base-mainnet ' +
+                'key funded with USDC and this call will pay for itself.',
           res.headers.get('PAYMENT-REQUIRED'),
         );
       }

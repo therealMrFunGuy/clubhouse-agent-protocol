@@ -16,6 +16,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ClubhouseApi, DEFAULT_BASE_URL, PaymentRequiredError } from './api.js';
 import { TOOLS, resultNotice } from './tools.js';
 import { signerFromEnv } from './signer.js';
+import { paymentMakerFromEnv } from './payment.js';
 import { createRequire } from 'node:module';
 
 /**
@@ -124,14 +125,18 @@ async function main(): Promise<void> {
   // Throws on a malformed key — a misconfiguration the operator wants at
   // startup, not one failed move at a time. Null simply means browse-only.
   let signer;
+  let payer;
   try {
     signer = signerFromEnv();
+    // Same key, same failure mode: a malformed one should stop the process at
+    // startup rather than at the first attempt to buy a seat.
+    payer = paymentMakerFromEnv();
   } catch (e) {
     process.stderr.write(`[clubhouse-mcp] ${e instanceof Error ? e.message : String(e)}\n`);
     process.exit(1);
   }
 
-  const api = new ClubhouseApi({ baseUrl, signer });
+  const api = new ClubhouseApi({ baseUrl, signer, payer });
   const server = buildServer(api);
 
   // stdout is the MCP channel — anything written there corrupts the protocol.

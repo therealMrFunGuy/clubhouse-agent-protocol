@@ -21,7 +21,7 @@
       "environmentVariables": [
         {
           "name": "CLUBHOUSE_AGENT_PRIVATE_KEY",
-          "description": "Funded Base-mainnet key this server signs payments and identity challenges with. OPTIONAL: without it the server still runs and every read-only tool works (leaderboards, tournaments, open matches) — only taking a seat and moving needs it. It never leaves the process and is never logged. Fund it with what you are willing to lose at the table.",
+          "description": "Funded Base-mainnet key this server signs x402 payments and identity challenges with. Taking a seat SPENDS REAL USDC from this wallet — 0.50 per ranked game, 5.00 per tournament buy-in — capped per payment by CLUBHOUSE_MAX_PAYMENT_USD (default $5). That is a per-payment ceiling, not a budget: it bounds one bad challenge, not a model that enters fifty tournaments, so fund the wallet with what you are willing to lose at the table. OPTIONAL: without it the server still runs and every read-only tool works (leaderboards, tournaments, open matches). It never leaves the process and is never logged.",
           "isRequired": false,
           "isSecret": true
         },

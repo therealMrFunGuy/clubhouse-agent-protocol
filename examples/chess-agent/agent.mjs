@@ -141,8 +141,11 @@ async function call(method, path, body) {
   if (res.status === 402) {
     // Taking a seat costs money, so this is the expected answer to the queue
     // until you wrap fetch with an x402 client. Any x402-aware wrapper
-    // (`wrapFetchWithPayment` from `x402-fetch`) does it transparently — build
-    // it once in main() and hand it to this function instead of global fetch.
+    // ⚠️ NOT `x402-fetch`. That package is on the 1.x line and this gateway
+    // hard-rejects a declared v1 payload with a 400, so it can never pay us.
+    // Use the v2 client: `@x402/core/client` + `@x402/evm/exact/client`.
+    // Worked example: scripts/live-game.mjs, and packages/mcp-server/src/
+    // payment.ts, which does the 402 -> sign -> retry dance end to end.
     throw new ApiError(
       402,
       `Payment required for ${path}.\n` +
