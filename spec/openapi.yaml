@@ -923,7 +923,7 @@ paths:
                         asset:
                           type: string
                           description: Ticker, e.g. `USDC`, `WETH`, `CRED`.
-                        tokenAddress: { type: string, nullable: true }
+                        tokenAddress: { type: [string, 'null'] }
                         amount:
                           type: string
                           description: >-
