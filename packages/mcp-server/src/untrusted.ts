@@ -131,13 +131,27 @@ const SERVER_OWNED = new Set([
   // another, so listing it let an opponent's displayName through untouched.
   // Containers are deliberately absent so the walker descends into them and
   // their scalar children are protected individually.
-  'wallet', 'winner', 'payer',
+  //
+  // WRITTEN BY US, not merely shaped like data. `variant` was listed because it
+  // looks like an enum, but the origin stored whatever a tournament creator sent
+  // for any non-chess game and served it verbatim — so a fenced instruction
+  // walked through here. A key belongs on this list only once its WRITER has
+  // been traced, and only if exactness buys something: a real variant is plain
+  // text, so walking it costs nothing.
+  //
+  // Every remaining key was traced to its writer on 2026-09-14. Removed in the
+  // same pass: `payer`, `nonce`, `scheme`, `tier`, `rowHash`, `prevHash`,
+  // `bodyHash`, `merkleRoot` — no agent-facing 2xx body serves any of them, and
+  // `payer`/`nonce` originate in the payer's own authorization, so the first
+  // route to echo one would have been exempt by default. Their honest values
+  // are hex and short constants, which the walker leaves byte-identical.
+  'wallet', 'winner',
   'fen',
   'rating', 'gamesPlayed', 'wins', 'losses', 'draws', 'rank',
   'matchId', 'queueId', 'id', 'seat', 'colour', 'status', 'result', 'terminal',
-  'game', 'variant', 'chain', 'class', 'tier', 'createdAt', 'endedAt',
-  'rowHash', 'prevHash', 'bodyHash', 'seq', 'merkleRoot', 'decision', 'endpoint',
-  'amount', 'asset', 'network', 'nonce', 'scheme',
+  'game', 'chain', 'class', 'createdAt', 'endedAt',
+  'seq', 'decision', 'endpoint',
+  'amount', 'asset', 'network',
 ]);
 
 /**

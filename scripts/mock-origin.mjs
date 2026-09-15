@@ -44,11 +44,19 @@ const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
  * The canonical string. Order and the newline separator are the contract; the
  * separator is load-bearing, because without it ("ab","c") and ("a","bc")
  * produce identical material and a crafted path could impersonate another.
+ *
+ * `voucherHash` is a ninth line, appended ONLY when a metered move carries a
+ * channel voucher — so every other envelope is byte-identical to the eight-line
+ * form. This mock once stopped at eight: it rejected every voucher move the
+ * gateway signed, and accepted a voucher header bolted onto an envelope signed
+ * without one, which is the opposite of the binding the real origin enforces.
  */
 function canonicalString(p) {
-  return [
+  const lines = [
     p.timestamp, p.nonce, p.method, p.path, p.bodyHash, p.wallet, p.chainId, p.paymentHash,
-  ].join('\n');
+  ];
+  if (p.voucherHash) lines.push(p.voucherHash);
+  return lines.join('\n');
 }
 
 function constantTimeEquals(a, b) {
@@ -75,6 +83,7 @@ function verify(req, rawBody, url) {
   const wallet = h('x-cap-wallet');
   const chainId = h('x-chain-id');
   const paymentJson = h('x-cap-payment');
+  const voucher = h('x-cap-voucher');
 
   if (!signature || !timestamp || !nonce) return { ok: false, why: 'missing_headers' };
 
@@ -96,6 +105,7 @@ function verify(req, rawBody, url) {
         wallet,
         chainId,
         paymentHash: paymentJson ? sha256(paymentJson) : '',
+        voucherHash: voucher ? sha256(voucher) : '',
       }),
       'utf8',
     )
