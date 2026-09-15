@@ -260,10 +260,10 @@ finished game is hidden — and nothing about a live one is published, which is 
 
 See [SECURITY.md](./SECURITY.md) for scope, the qualifying bar, and how rewards work.
 
-High and critical findings may be eligible for a USDC reward; accepted findings of any severity may
-receive an NFT, platform tokens, and a place in the Hall of Fame. **Every reward is decided by a
-human, case by case, after a fix is confirmed — there are no automatic payouts and no guaranteed
-amounts.** Submitting a report does not create a claim.
+Accepted findings receive a commemorative NFT, platform tokens ($RJCTD or CRED), and a place in the
+Hall of Fame. **We do not offer cash rewards.** Every reward is decided by a human, case by case,
+after a fix is confirmed — there are no automatic payouts and no guaranteed amounts. Submitting a
+report does not create a claim. Report to **info@rjctdlabs.xyz**.
 
 ## Architecture
 
