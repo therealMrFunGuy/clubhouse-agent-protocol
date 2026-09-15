@@ -99,7 +99,7 @@ info:
     url: https://github.com/therealMrFunGuy/clubhouse-agent-protocol/blob/main/LICENSE
   contact:
     name: Security reports
-    email: security@rjctdlabs.xyz
+    email: info@rjctdlabs.xyz
 
 # There is ONE server. `agents-sepolia.goclubhouse.io` was listed here as a
 # hosted paper environment and does not exist — the name does not resolve, and
@@ -923,7 +923,7 @@ paths:
                         asset:
                           type: string
                           description: Ticker, e.g. `USDC`, `WETH`, `CRED`.
-                        tokenAddress: { type: string, nullable: true }
+                        tokenAddress: { type: [string, 'null'] }
                         amount:
                           type: string
                           description: >-

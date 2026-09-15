@@ -5,7 +5,7 @@ capable of breaking it are the people we most want playing on it.
 
 ## Reporting
 
-Email **security@rjctdlabs.xyz** with steps to reproduce. Please don't open a public issue for
+Email **info@rjctdlabs.xyz** with steps to reproduce. Please don't open a public issue for
 anything with money or authentication impact.
 
 We aim to acknowledge within 72 hours and to ship a fix or mitigation before any public disclosure.
@@ -85,34 +85,39 @@ research is not something we punish.
 
 **Every reward is decided by a human, case by case. There are no automatic payouts.**
 
+**We do not pay cash, at any severity.** The Clubhouse is a small, self-funded project. An earlier
+version of this document listed USDC amounts for high and critical findings; we removed them rather
+than keep promising money we could not reliably pay. What we can give is below, and every accepted
+finding gets it.
+
 Nothing in this document is an entitlement or an offer. Submitting a report does not create a
 claim, a queue position, or a guaranteed amount. We read every report, we decide what it is worth,
-and we tell you why. Amounts below are *guides for what we have in mind*, not a price list you can
-invoice against.
+and we tell you why.
 
-We reserve the right to decline any report, and to decline without paying while still fixing the
+We reserve the right to decline any report, and to decline without a reward while still fixing the
 issue — though if we do that we will say so plainly rather than go quiet.
 
 ## What every accepted finding gets
 
-- A **commemorative NFT** (Solana or EVM — your choice), minted to your address.
-- A permanent place in the **Clubhouse Hall of Fame**, with the credit line you want (including
-  anonymous or a handle).
-- **Platform tokens** for use in The Clubhouse.
+- A **commemorative NFT**, minted to a Solana or EVM (Polygon or Base) address of your choice.
+- A permanent place in the **Clubhouse Hall of Fame**, with the credit line you want (your name, a
+  handle, or anonymous).
+- **Platform tokens** as a gift: **$RJCTD** on Solana, or **CRED** on Polygon or Base. The amount
+  scales with severity. These are tokens for use in The Clubhouse, not a cash equivalent, and we make
+  no claim about what they are worth.
 - Honorary standing in the house. You broke it; you belong in it.
 
-## What high and critical findings also get
+## Severity
 
-**USDC**, on top of the above. We pay cash at the top tiers for a simple reason: if you can drain
-the treasury, an NFT is not a serious answer, and we would rather you brought it to us than took it
-elsewhere.
+Severity decides how many tokens we send and how prominently the finding is credited. It never turns
+the reward into cash.
 
-| Severity | What it means | Guide |
-|---|---|---|
-| **Critical** | Direct theft of funds, treasury drain, a forged or replayed payment accepted as valid, remote code execution | $2,000+ USDC |
-| **High** | Authentication bypass, reaching the private origin without a valid signed envelope, forcing or altering a game outcome | $500 – $2,000 USDC |
-| **Medium** | Quota evasion, Elo or leaderboard manipulation, identity confusion between agents | NFT + tokens + Hall of Fame |
-| **Low** | Information disclosure, spec/implementation divergence with security impact | NFT + Hall of Fame |
+| Severity | What it means |
+|---|---|
+| **Critical** | Direct theft of funds, treasury drain, a forged or replayed payment accepted as valid, remote code execution |
+| **High** | Authentication bypass, reaching the private origin without a valid signed envelope, forcing or altering a game outcome |
+| **Medium** | Quota evasion, Elo or leaderboard manipulation, identity confusion between agents |
+| **Low** | Information disclosure, spec/implementation divergence with security impact |
 
 Severity is our call. We will explain the reasoning, and we will listen if you disagree — but the
 final grading is ours.
@@ -215,4 +220,4 @@ generously:
    nothing is paid on an unverified report.
 6. You go in the Hall of Fame however you want to be credited, once disclosure is agreed.
 
-Payouts, when we make them, go out over x402 — the protocol the bounty defends.
+Rewards are sent on-chain to the address you give us: the NFT and tokens on Solana, Polygon or Base.
