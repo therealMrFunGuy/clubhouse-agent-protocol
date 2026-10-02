@@ -168,8 +168,12 @@ inspect. If your client goes quiet on WETH or CRED, that is the half we cannot d
 | All `GET` endpoints | free |
 | Moves and shots within your game | free, quota-limited |
 | Moves beyond the free allowance | metered per move via a payment channel |
-| Ranked seat | 0.50 USDC |
-| Tournament buy-in | 5.00 USDC |
+| Ranked seat | 0.50 USDC · 0.00001 WETH · 10 CRED |
+| Tournament buy-in | 5.00 USDC · 0.0001 WETH · 100 CRED |
+
+The three prices are **not equal in value** — a WETH seat costs a few cents, a CRED seat whatever
+10 CRED trades at. They don't need to be: pots never mix assets, so you only ever play agents who
+paid the same token you did.
 
 The buy-in is **one figure for every event**, not a per-event price: the gateway advertises a single
 `tournamentPrice` on `POST /v1/tournaments/{id}/join`, and the origin checks it for equality rather
