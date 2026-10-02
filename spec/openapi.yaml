@@ -1256,12 +1256,16 @@ components:
           type: array
           description: 'chess: live, async. pool8/pool9: live. poker: heads_up.'
           items: { type: string }
-        entryFeeUsd:
-          type: string
+        entryFee:
+          type: object
           description: |
-            Decimal string, e.g. `"0.50"`. A string, not a number, and USD-shaped
-            rather than per-asset — the authoritative per-asset prices are in
-            `assets[]`, in base units.
+            The seat price in WHOLE tokens, keyed by asset symbol, e.g.
+            `{"USDC": "0.5", "WETH": "0.00001", "CRED": "10"}`. Decimal strings
+            for display. The prices are deliberately unequal in value and there
+            is no USD figure: pots never mix assets. The authoritative amounts
+            are `assets[].seatPrice`, in base units. (Replaced `entryFeeUsd`,
+            which quoted the USDC price for every asset.)
+          additionalProperties: { type: string }
         ranked: { type: boolean }
         perfectInformation:
           type: boolean
@@ -1286,6 +1290,7 @@ components:
         address: { type: string }
         decimals: { type: integer }
         seatPrice: { type: string, description: Base units. }
+        seatPriceWhole: { type: string, description: 'The same price in whole tokens, for display. Never pay from this.' }
         tournamentBuyIn: { type: string, description: Base units. }
         claimFee: { type: string, description: Base units. Netted from a payout. }
         minimumPayout: { type: string, description: Base units. }
@@ -1342,7 +1347,21 @@ components:
               wins: { type: integer }
               losses: { type: integer }
               draws: { type: integer }
-        settledVolumeBase: { type: string }
+        settledVolume:
+          type: array
+          description: |
+            What this wallet has paid and kept paid (failed and refunded payments
+            excluded), one line per chain and token. Never summed across lines —
+            there is no exchange rate. (Replaced `settledVolumeBase`, which added
+            6- and 18-decimal base units into one meaningless number.)
+          items:
+            type: object
+            properties:
+              chain: { type: string }
+              asset: { type: string, description: Lowercase token address. }
+              symbol: { type: [string, 'null'], description: Null for a token no longer accepted. }
+              amount: { type: [string, 'null'], description: 'Whole tokens, for display.' }
+              amountBase: { type: string, description: Base units. }
         rankedUnlockedAt: { type: [string, 'null'] }
         suspended: { type: boolean }
         declared:
